@@ -1,0 +1,185 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --font-display: 'Outfit', system-ui, -apple-system, sans-serif;
+    --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  h1, h2, h3, h4, .font-display {
+    font-family: var(--font-display);
+  }
+
+  .font-mono {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* MapLibre GL crisp canvas & attribution styling */
+.maplibregl-map {
+  font-family: var(--font-sans) !important;
+}
+
+.maplibregl-ctrl-attrib {
+  font-size: 10px !important;
+  opacity: 0.72;
+  background: rgba(255, 255, 255, 0.78) !important;
+  color: #475569 !important;
+  border-radius: 6px 0 0 0 !important;
+}
+
+html.dark .maplibregl-ctrl-attrib {
+  background: rgba(15, 23, 42, 0.75) !important;
+  color: #94a3b8 !important;
+}
+
+html.dark .maplibregl-ctrl-attrib a {
+  color: #cbd5e1 !important;
+}
+
+/* Subtle custom scrollbars for high-density transit lists */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.28);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.48);
+}
+
+/* Sleeping / arrived bus floating Zzz animation */
+@keyframes bus-zzz-float {
+  0% {
+    opacity: 0;
+    transform: translate(0px, 6px) scale(0.7);
+  }
+  25% {
+    opacity: 1;
+  }
+  75% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(8px, -16px) scale(1.18);
+  }
+}
+
+.bus-zzz-wrap {
+  position: relative;
+  width: 30px;
+  height: 28px;
+  pointer-events: none;
+  user-select: none;
+}
+
+.bus-zzz-letter {
+  position: absolute;
+  font-family: var(--font-display);
+  font-weight: 800;
+  color: #4f46e5;
+  text-shadow:
+    -1px -1px 0 #ffffff,
+    1px -1px 0 #ffffff,
+    -1px 1px 0 #ffffff,
+    1px 1px 0 #ffffff,
+    0 2px 4px rgba(15, 23, 42, 0.25);
+  line-height: 1;
+  animation: bus-zzz-float 2.4s ease-in-out infinite;
+}
+
+html.dark .bus-zzz-letter {
+  color: #a5b4fc;
+  text-shadow:
+    -1px -1px 0 #0f172a,
+    1px -1px 0 #0f172a,
+    -1px 1px 0 #0f172a,
+    1px 1px 0 #0f172a;
+}
+
+.bus-zzz-1 {
+  left: 2px;
+  bottom: 2px;
+  font-size: 11px;
+  animation-delay: 0s;
+}
+
+.bus-zzz-2 {
+  left: 10px;
+  bottom: 7px;
+  font-size: 13px;
+  animation-delay: 0.7s;
+}
+
+.bus-zzz-3 {
+  left: 18px;
+  bottom: 13px;
+  font-size: 15px;
+  animation-delay: 1.4s;
+}
+
+/* Real GPS user location pulsing blue dot */
+@keyframes gps-blue-pulse {
+  0% {
+    transform: scale(0.8);
+    opacity: 0.75;
+  }
+  70% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+.user-gps-marker {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.user-gps-pulse {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: rgba(37, 99, 235, 0.35);
+  animation: gps-blue-pulse 2.2s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+
+.user-gps-dot {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: #2563eb;
+  border: 2.5px solid #ffffff;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.55);
+}
+

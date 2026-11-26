@@ -1,0 +1,6 @@
+{
+  "name": "Odisha Bus — Live Transit & Route Tracker",
+  "description": "Free real-time bus tracking, route explorer, and station search for Odisha covering Shree Jagannath Express, OSRTC, Mukhyamantri Bus Seva, Ama Bus, Ama Bus AC, and Mo Bus.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

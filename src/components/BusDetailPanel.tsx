@@ -1,0 +1,807 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { Check, Copy, LocateFixed, Map as MapIcon, Route as RouteIcon, X } from 'lucide-react';
+import {
+  BusRoute,
+  BusStop,
+  LiveBus,
+  RoadRoutesSelection,
+  RouteStopTiming
+} from '../utils/transitTypes';
+import { CoachLiverySvg } from './CoachLiverySvg';
+import {
+  calculateDistanceKm,
+  estimateFareInr,
+  findRoutesNearRoadPoint,
+  formatTime12Hour,
+  isBusSleeping
+} from '../utils/transitLogic';
+
+interface BusDetailPanelProps {
+  selectedBus: LiveBus | null;
+  selectedRoute: BusRoute | null;
+  selectedStop: BusStop | null;
+  selectedRoad: RoadRoutesSelection | null;
+  allBuses: LiveBus[];
+  allRoutes: BusRoute[];
+  isLoadingTrip: boolean;
+  followBus: boolean;
+  mobileVisible: boolean;
+  onShowMapMobile: () => void;
+  onToggleFollowBus: () => void;
+  onClose: () => void;
+  onFocusCoords: (lat: number, lon: number, zoom?: number) => void;
+  onSelectBus: (bus: LiveBus) => void;
+  onSelectRoute: (route: BusRoute) => void;
+}
+
+export const BusDetailPanel: React.FC<BusDetailPanelProps> = ({
+  selectedBus,
+  selectedRoute,
+  selectedStop,
+  selectedRoad,
+  allBuses,
+  allRoutes,
+  isLoadingTrip,
+  followBus,
+  mobileVisible,
+  onShowMapMobile,
+  onToggleFollowBus,
+  onClose,
+  onFocusCoords,
+  onSelectBus,
+  onSelectRoute
+}) => {
+  const [copiedLink, setCopiedLink] = useState(false);
+  const timelineContainerRef = useRef<HTMLDivElement | null>(null);
+  const nextStopItemRef = useRef<HTMLLIElement | null>(null);
+
+  // Auto-scroll timeline directly to the next station so the user sees it immediately without scrolling
+  useEffect(() => {
+    if (!selectedBus || !nextStopItemRef.current || !timelineContainerRef.current) return;
+    const timer = window.setTimeout(() => {
+      const container = timelineContainerRef.current;
+      const target = nextStopItemRef.current;
+      if (!container || !target) return;
+      const offsetTop = target.offsetTop - Math.max(24, container.clientHeight * 0.25);
+      container.scrollTo({
+        top: Math.max(0, offsetTop),
+        behavior: 'smooth'
+      });
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [selectedBus?.registrationNumber, selectedBus?.tripStops?.length, selectedBus?.nextStopName]);
+
+  if (!selectedBus && !selectedRoute && !selectedStop && !selectedRoad) {
+    return null;
+  }
+
+  const handleCopyDeepLink = (paramKey: string, paramValue: string) => {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('bus');
+    url.searchParams.delete('route');
+    url.searchParams.delete('stop');
+    url.searchParams.set(paramKey, paramValue);
+    window.history.replaceState({}, '', url.toString());
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url.toString()).catch(() => {});
+    }
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2000);
+  };
+
+  // Anchors cleanly inside <main> directly above the sticky mobile footer
+  const containerClass = `${
+    mobileVisible ? 'flex' : 'hidden md:flex'
+  } absolute inset-x-0 bottom-0 z-[600] max-h-[82%] rounded-t-3xl shadow-2xl border-t border-slate-200/90 dark:border-slate-800 bg-white/98 dark:bg-slate-900/98 backdrop-blur-xl flex-col overflow-hidden md:inset-x-auto md:top-3 md:right-16 md:bottom-3 md:w-[344px] md:max-h-none md:rounded-2xl md:border md:shadow-2xl md:z-[500] xl:static xl:w-[396px] xl:h-full xl:rounded-none xl:border-0 xl:border-l xl:shadow-none xl:bg-white xl:dark:bg-slate-900 xl:z-20 shrink-0`;
+
+  const MobileSheetHandle = () => (
+    <div className="md:hidden flex flex-col items-center pt-2.5 pb-1 shrink-0 bg-white dark:bg-slate-900">
+      <div className="w-10 h-1 rounded-full bg-slate-300 dark:bg-slate-700" aria-hidden="true" />
+    </div>
+  );
+
+  // 1. LIVE BUS VIEW
+  if (selectedBus) {
+    const stops: RouteStopTiming[] = selectedBus.tripStops || [];
+    const passedCount = stops.filter((s) => s.status === 'passed').length;
+    const nextStopIdx = stops.findIndex((s) => s.status === 'current' || s.status === 'upcoming');
+    const sleeping = isBusSleeping(selectedBus);
+    const arrivedAtEnd =
+      stops.length > 0 && stops.every((s) => s.status === 'passed' || s.status === 'skipped');
+
+    const speedLabel =
+      selectedBus.speedKmh > 0
+        ? `${selectedBus.speedKmh} km/h${selectedBus.speedSource === 'calculated' ? ' (calculated)' : ''}`
+        : arrivedAtEnd
+        ? 'Arrived at destination'
+        : 'Stationary (0 km/h)';
+
+    return (
+      <aside
+        aria-label={`Live bus details for ${selectedBus.registrationNumber}`}
+        className={containerClass}
+      >
+        <MobileSheetHandle />
+
+        {/* Header with Route Direction, Registration & GPS Age */}
+        <div className="px-4 pt-3 pb-4 border-b border-slate-200/80 dark:border-slate-800 bg-gradient-to-b from-orange-50/50 via-white to-white dark:from-slate-900 dark:via-slate-900 dark:to-slate-900 shrink-0">
+          <div className="flex items-start justify-between gap-2.5">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                <span className="font-mono font-bold text-orange-600 dark:text-orange-400">
+                  {selectedBus.routeNumber}
+                </span>
+                <span aria-hidden="true">·</span>
+                <span className="truncate font-medium">
+                  {selectedBus.fleet === 'Standby' ? 'Not yet seen on a trip' : selectedBus.fleet}
+                </span>
+              </div>
+              <h2 className="text-lg font-bold tracking-tight text-slate-900 dark:text-white mt-0.5 leading-snug font-display">
+                {selectedBus.routeName}
+              </h2>
+              <div className="text-xs text-slate-600 dark:text-slate-300 mt-1 flex items-center gap-1.5 font-mono tabular-nums">
+                <span className="font-semibold text-slate-900 dark:text-white">
+                  Bus {selectedBus.registrationNumber}
+                </span>
+                <span aria-hidden="true" className="text-slate-300 dark:text-slate-600">·</span>
+                <span className="text-slate-500 dark:text-slate-400">
+                  {selectedBus.gpsAgeLabel || 'GPS live'}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={onShowMapMobile}
+                aria-label="View bus on map"
+                className="md:hidden inline-flex items-center gap-1 px-2.5 min-h-[40px] rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+              >
+                <MapIcon className="w-3.5 h-3.5" />
+                <span>Map</span>
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close bus details"
+                className="w-10 h-10 md:w-8 md:h-8 flex items-center justify-center rounded-xl text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Vector Livery + Clean Speed & Service Info (with animated Zzz when arrived/resting) */}
+          <div className="mt-3 py-2.5 px-3 rounded-xl bg-slate-50/90 dark:bg-slate-950/70 border border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between gap-3">
+            <div className="relative flex items-center">
+              <CoachLiverySvg fleet={selectedBus.fleet} size="md" />
+              {sleeping && (
+                <div
+                  aria-label="Bus resting"
+                  data-testid="bus-sleep-zzz"
+                  className="bus-zzz-wrap -ml-4 -mt-6"
+                >
+                  <span className="bus-zzz-letter bus-zzz-1">z</span>
+                  <span className="bus-zzz-letter bus-zzz-2">z</span>
+                  <span className="bus-zzz-letter bus-zzz-3">Z</span>
+                </div>
+              )}
+            </div>
+            <div className="text-right text-xs space-y-0.5">
+              <div className="font-mono tabular-nums text-slate-900 dark:text-slate-100 font-semibold">
+                {speedLabel}
+              </div>
+              <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                {arrivedAtEnd
+                  ? 'Trip completed · Resting'
+                  : selectedBus.fleet === 'Standby' || !selectedBus.isOnTrip
+                  ? 'Off duty / between trips'
+                  : selectedBus.fleet}
+              </div>
+              {selectedBus.lastStopName && selectedBus.isOnTrip && (
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate max-w-[165px]">
+                  Last: {selectedBus.lastStopName}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Action Toolbar */}
+          <div className="mt-3 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                onToggleFollowBus();
+                onShowMapMobile();
+              }}
+              aria-pressed={followBus}
+              className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 min-h-[40px] md:min-h-[34px] text-xs font-semibold rounded-xl transition-all shadow-xs whitespace-nowrap shrink-0 ${
+                followBus
+                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                  : 'bg-orange-600 hover:bg-orange-500 text-white'
+              }`}
+            >
+              <LocateFixed className="w-3.5 h-3.5" />
+              <span>{followBus ? 'Following Bus' : 'Follow this bus'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleCopyDeepLink('bus', selectedBus.registrationNumber)}
+              className="inline-flex items-center justify-center gap-1.5 px-3 min-h-[40px] md:min-h-[34px] text-xs font-medium rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors whitespace-nowrap shrink-0"
+            >
+              {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+              <span>{copiedLink ? 'Link Copied' : 'Share ?bus='}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Immediate Next Station / Arrived End Summary Banner (Visible without scrolling) */}
+        {stops.length > 0 && (
+          <div
+            className={`px-4 py-2.5 border-b text-xs flex items-center justify-between gap-2 shrink-0 ${
+              arrivedAtEnd
+                ? 'bg-indigo-50/90 dark:bg-indigo-950/35 border-indigo-200/70 dark:border-indigo-900/50'
+                : 'bg-rose-50/85 dark:bg-rose-950/30 border-rose-200/70 dark:border-rose-900/50'
+            }`}
+          >
+            <div className="text-slate-700 dark:text-slate-200 truncate">
+              {arrivedAtEnd ? (
+                <>
+                  <span className="text-indigo-600 dark:text-indigo-400 font-semibold">Arrived at end: </span>
+                  <strong className="font-bold text-slate-900 dark:text-white">
+                    {selectedBus.destination}
+                  </strong>
+                </>
+              ) : (
+                <>
+                  <span className="text-rose-600 dark:text-rose-400 font-semibold">Next station: </span>
+                  <strong className="font-bold text-slate-900 dark:text-white">
+                    {selectedBus.nextStopName || selectedBus.destination}
+                  </strong>
+                </>
+              )}
+            </div>
+            <div
+              className={`font-mono tabular-nums font-bold shrink-0 ${
+                arrivedAtEnd
+                  ? 'text-indigo-600 dark:text-indigo-400'
+                  : 'text-rose-600 dark:text-rose-400'
+              }`}
+            >
+              {arrivedAtEnd ? 'Resting (Zzz)' : `due ${formatTime12Hour(selectedBus.nextStopEta)}`}
+            </div>
+          </div>
+        )}
+
+        {/* Stop-by-Stop Live Route Timeline (Auto-scrolled to Next Station) */}
+        <div ref={timelineContainerRef} className="flex-1 overflow-y-auto p-4 relative">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-xs font-semibold text-slate-900 dark:text-slate-200">
+              Live Route Timeline ({stops.length} stations)
+            </h3>
+            {stops.length > 0 && (
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-mono tabular-nums">
+                {passedCount}/{stops.length} passed
+              </span>
+            )}
+          </div>
+
+          {isLoadingTrip && (
+            <div className="text-xs text-slate-500 dark:text-slate-400 py-2">
+              Loading full stop timeline and road route from OSRTC tracker…
+            </div>
+          )}
+
+          {!isLoadingTrip && stops.length === 0 ? (
+            <div className="p-4 rounded-xl border border-slate-200/90 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/40 text-xs text-slate-600 dark:text-slate-400 space-y-2 leading-relaxed">
+              <p>
+                Odisha’s tracker shows <strong className="font-mono text-slate-900 dark:text-slate-200">{selectedBus.registrationNumber}</strong> between assigned trips or parked at depot right now.
+              </p>
+            </div>
+          ) : (
+            <ol className="relative space-y-0">
+              {stops.map((st, idx) => {
+                const isPassed = st.status === 'passed';
+                const isCurrent = st.status === 'current';
+                const isSkipped = st.status === 'skipped';
+                const isLast = idx === stops.length - 1;
+                const isNextFocus = idx === nextStopIdx;
+                const timeText = formatTime12Hour(st.estimatedTime || st.scheduledTime);
+
+                return (
+                  <li
+                    key={`${st.stopId}-${idx}`}
+                    ref={isNextFocus ? nextStopItemRef : undefined}
+                    className="relative pl-6 pb-3.5 last:pb-0"
+                  >
+                    {/* Vertical timeline connector line */}
+                    {!isLast && (
+                      <span
+                        aria-hidden="true"
+                        className={`absolute left-[6px] top-3 bottom-0 w-0.5 ${
+                          isPassed
+                            ? 'bg-rose-500/80 dark:bg-rose-500/70'
+                            : 'bg-slate-200 dark:bg-slate-700'
+                        }`}
+                      />
+                    )}
+
+                    {/* Timeline Node */}
+                    <span
+                      aria-hidden="true"
+                      className={`absolute left-0 top-1.5 w-3.5 h-3.5 rounded-full border-2 ${
+                        isCurrent
+                          ? 'bg-rose-600 border-white dark:border-slate-900 ring-2 ring-rose-500/60'
+                          : isPassed
+                          ? 'bg-rose-500 border-white dark:border-slate-900'
+                          : 'bg-white dark:bg-slate-900 border-rose-400'
+                      }`}
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onFocusCoords(st.lat, st.lon, 14);
+                        onShowMapMobile();
+                      }}
+                      className={`w-full text-left group flex items-baseline justify-between gap-2 rounded-lg px-2 py-1 -mx-2 transition-colors ${
+                        isCurrent
+                          ? 'bg-rose-50/80 dark:bg-rose-950/35'
+                          : 'hover:bg-slate-100/80 dark:hover:bg-slate-800/70'
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <div
+                          className={`text-xs truncate ${
+                            isCurrent
+                              ? 'text-rose-700 dark:text-rose-300 font-bold'
+                              : isPassed
+                              ? 'text-slate-500 dark:text-slate-400 font-medium'
+                              : 'text-slate-900 dark:text-slate-100 font-semibold'
+                          }`}
+                        >
+                          {st.stopName}
+                        </div>
+                        <div
+                          className={`text-[11px] font-mono tabular-nums ${
+                            isCurrent
+                              ? 'text-rose-600 dark:text-rose-400 font-semibold'
+                              : 'text-slate-500 dark:text-slate-400'
+                          }`}
+                        >
+                          {isSkipped
+                            ? 'skipped'
+                            : isPassed
+                            ? `at ${timeText}`
+                            : `due ${timeText}`}
+                        </div>
+                      </div>
+
+                      <div
+                        className={`text-[11px] shrink-0 ${
+                          isCurrent
+                            ? 'text-rose-600 dark:text-rose-400 font-semibold'
+                            : isPassed
+                            ? 'text-slate-400 dark:text-slate-500'
+                            : 'text-slate-500 dark:text-slate-400'
+                        }`}
+                      >
+                        {isCurrent ? 'Next station' : isPassed ? 'Passed' : 'Upcoming'}
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+
+          {stops.length > 0 && (
+            <p className="mt-4 pt-3 border-t border-slate-200/80 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+              This bus’s live trip from Odisha’s transit tracker: stops it has passed show when it reached them, and upcoming stops show expected arrival times.
+            </p>
+          )}
+        </div>
+      </aside>
+    );
+  }
+
+  // 2. ROUTES ON THIS ROAD VIEW (Triggered by clicking on any road on MapLibre)
+  if (selectedRoad) {
+    return (
+      <aside
+        aria-label={`Routes on ${selectedRoad.roadName}`}
+        className={containerClass}
+      >
+        <MobileSheetHandle />
+
+        <div className="px-4 pt-3 pb-4 border-b border-slate-200/80 dark:border-slate-800 bg-gradient-to-b from-orange-50/50 via-white to-white dark:from-slate-900 dark:via-slate-900 dark:to-slate-900 shrink-0">
+          <div className="flex items-start justify-between gap-2.5">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-orange-600 dark:text-orange-400">
+                <RouteIcon className="w-3.5 h-3.5 shrink-0" />
+                <span>Routes on this road</span>
+              </div>
+              <h2 className="text-lg font-bold tracking-tight text-slate-900 dark:text-white mt-0.5 font-display truncate">
+                {selectedRoad.roadName}
+              </h2>
+              {selectedRoad.nearestStopName && (
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Near {selectedRoad.nearestStopName}
+                </p>
+              )}
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={onShowMapMobile}
+                aria-label="Back to map"
+                className="md:hidden inline-flex items-center gap-1 px-2.5 min-h-[40px] rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200"
+              >
+                <MapIcon className="w-3.5 h-3.5" />
+                <span>Map</span>
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close routes on this road"
+                className="w-10 h-10 md:w-8 md:h-8 flex items-center justify-center rounded-xl text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
+          {selectedRoad.isLoading ? (
+            <div className="py-6 text-center text-xs text-slate-500 dark:text-slate-400">
+              Finding Odisha bus routes on this road…
+            </div>
+          ) : selectedRoad.routes.length === 0 ? (
+            <div className="p-4 rounded-xl border border-slate-200/90 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/40 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+              No scheduled Odisha bus routes pass directly on this road segment. Try tapping a nearby state highway, national highway, or city main road.
+            </div>
+          ) : (
+            <>
+              <div className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                {selectedRoad.routes.length} bus route{selectedRoad.routes.length === 1 ? '' : 's'} running here
+              </div>
+              {selectedRoad.routes.map((route) => {
+                const liveOnRoute = allBuses.filter(
+                  (b) => b.routeNumber === route.routeNumber || b.routeId === route.id
+                ).length;
+                return (
+                  <button
+                    key={route.id}
+                    type="button"
+                    onClick={() => onSelectRoute(route)}
+                    className="w-full p-3 rounded-xl border border-slate-200/90 dark:border-slate-800 hover:border-orange-500/60 hover:bg-orange-50/40 dark:hover:bg-slate-800/60 flex items-center justify-between gap-3 text-left transition-colors"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 text-xs">
+                        <span className="font-bold font-mono tabular-nums text-orange-600 dark:text-orange-400">
+                          Route {route.routeNumber}
+                        </span>
+                        <span aria-hidden="true" className="text-slate-300 dark:text-slate-600">·</span>
+                        <span className="text-slate-500 dark:text-slate-400 truncate">
+                          {route.fleet}
+                        </span>
+                      </div>
+                      <div className="text-xs font-semibold text-slate-900 dark:text-white truncate mt-0.5">
+                        {route.name}
+                      </div>
+                      <div className="text-[11px] font-mono tabular-nums text-slate-500 dark:text-slate-400 mt-0.5">
+                        {route.stops.length} stops
+                        {route.departures[0] ? ` · Dep ${formatTime12Hour(route.departures[0])}` : ''}
+                        {liveOnRoute > 0 ? ` · ${liveOnRoute} live` : ''}
+                      </div>
+                    </div>
+                    <CoachLiverySvg fleet={route.fleet} size="sm" />
+                  </button>
+                );
+              })}
+            </>
+          )}
+        </div>
+      </aside>
+    );
+  }
+
+  // 3. SELECTED ROUTE VIEW
+  if (selectedRoute) {
+    const activeBuses = allBuses.filter(
+      (b) => b.routeNumber === selectedRoute.routeNumber || b.routeId === selectedRoute.id
+    );
+    const estFare = estimateFareInr(selectedRoute.fleet, selectedRoute.distanceKm);
+
+    return (
+      <aside
+        aria-label={`Route details for ${selectedRoute.routeNumber}`}
+        className={containerClass}
+      >
+        <MobileSheetHandle />
+
+        <div className="px-4 pt-3 pb-4 border-b border-slate-200/80 dark:border-slate-800 bg-gradient-to-b from-orange-50/40 via-white to-white dark:from-slate-900 dark:via-slate-900 dark:to-slate-900 shrink-0">
+          <div className="flex items-start justify-between gap-2.5">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                <span className="font-semibold text-orange-600 dark:text-orange-400">
+                  {selectedRoute.fleet}
+                </span>
+                <span aria-hidden="true">·</span>
+                <span className="truncate">{selectedRoute.corridor}</span>
+              </div>
+              <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white font-mono tabular-nums mt-0.5">
+                Route {selectedRoute.routeNumber}
+              </h2>
+              <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
+                {selectedRoute.name}
+              </p>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={onShowMapMobile}
+                aria-label="View route on map"
+                className="md:hidden inline-flex items-center gap-1 px-2.5 min-h-[40px] rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200"
+              >
+                <MapIcon className="w-3.5 h-3.5" />
+                <span>Map</span>
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close route details"
+                className="w-10 h-10 md:w-8 md:h-8 flex items-center justify-center rounded-xl text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-3 py-2.5 px-3 rounded-xl bg-slate-50/90 dark:bg-slate-950/70 border border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between gap-3">
+            <CoachLiverySvg fleet={selectedRoute.fleet} size="md" />
+            <div className="text-right text-xs space-y-0.5 font-mono tabular-nums">
+              <div className="font-semibold text-slate-900 dark:text-white">
+                {selectedRoute.distanceKm} km · {selectedRoute.durationLabel}
+              </div>
+              <div className="text-slate-500 dark:text-slate-400">
+                Est. Fare ₹{estFare}
+              </div>
+              <div className="text-orange-600 dark:text-orange-400 font-semibold">
+                {activeBuses.length} live bus{activeBuses.length === 1 ? '' : 'es'}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-3 text-xs text-slate-600 dark:text-slate-400">
+            <span className="font-medium text-slate-800 dark:text-slate-200">Daily Departures: </span>
+            <span className="font-mono tabular-nums">
+              {selectedRoute.departures.map((d) => formatTime12Hour(d)).join(' · ')}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {activeBuses.length > 0 && (
+            <div>
+              <h3 className="text-xs font-semibold text-slate-900 dark:text-slate-200 mb-2">
+                Live Buses Running This Route
+              </h3>
+              <div className="space-y-1.5">
+                {activeBuses.map((b) => (
+                  <button
+                    key={b.registrationNumber}
+                    type="button"
+                    onClick={() => onSelectBus(b)}
+                    className="w-full p-2.5 rounded-xl border border-slate-200/90 dark:border-slate-800 hover:border-orange-500/60 hover:bg-orange-50/40 dark:hover:bg-slate-800/60 flex items-center justify-between text-left transition-colors"
+                  >
+                    <div>
+                      <div className="text-xs font-bold font-mono tabular-nums text-slate-900 dark:text-white">
+                        {b.registrationNumber}
+                      </div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                        Next: {b.nextStopName} · due {formatTime12Hour(b.nextStopEta)}
+                      </div>
+                    </div>
+                    <span className="text-xs font-mono tabular-nums text-orange-600 dark:text-orange-400 font-semibold">
+                      {b.speedKmh} km/h →
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <h3 className="text-xs font-semibold text-slate-900 dark:text-slate-200 mb-2">
+              Station Stops & Timings ({selectedRoute.stops.length})
+            </h3>
+            <div className="divide-y divide-slate-200/70 dark:divide-slate-800/70 border border-slate-200/90 dark:border-slate-800 rounded-xl overflow-hidden">
+              {selectedRoute.stops.map((st, idx) => (
+                <button
+                  key={`${st.stopId}-${idx}`}
+                  type="button"
+                  onClick={() => {
+                    onFocusCoords(st.lat, st.lon, 13);
+                    onShowMapMobile();
+                  }}
+                  className="w-full px-3 py-2.5 flex items-center justify-between text-left text-xs hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors"
+                >
+                  <span className="text-slate-800 dark:text-slate-200 font-medium truncate">
+                    {idx + 1}. {st.stopName}
+                  </span>
+                  <span className="font-mono tabular-nums text-slate-500 dark:text-slate-400 shrink-0 ml-2">
+                    {formatTime12Hour(st.scheduledTime)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </aside>
+    );
+  }
+
+  // 4. SELECTED STATION / STOP VIEW
+  if (selectedStop) {
+    const firstToken = selectedStop.name.toLowerCase().split(' ')[0];
+    const directRouteMatches = allRoutes.filter((r) =>
+      r.stops.some(
+        (s) =>
+          s.stopId === selectedStop.id ||
+          (firstToken.length >= 3 && s.stopName.toLowerCase().includes(firstToken))
+      )
+    );
+    const nearbyRoadRoutes = selectedStop.isCustom
+      ? findRoutesNearRoadPoint(allRoutes, selectedStop.lat, selectedStop.lon, 2.5)
+      : [];
+    const seenRouteIds = new Set<string>();
+    const routesServingStop: BusRoute[] = [];
+    for (const r of [...directRouteMatches, ...nearbyRoadRoutes]) {
+      if (seenRouteIds.has(r.id)) continue;
+      seenRouteIds.add(r.id);
+      routesServingStop.push(r);
+    }
+
+    const busesServingStop = allBuses.filter(
+      (b) =>
+        (firstToken.length >= 3 &&
+          (b.origin.toLowerCase().includes(firstToken) ||
+            b.destination.toLowerCase().includes(firstToken))) ||
+        b.tripStops.some(
+          (s) =>
+            s.stopId === selectedStop.id ||
+            (firstToken.length >= 3 && s.stopName.toLowerCase().includes(firstToken))
+        ) ||
+        (selectedStop.isCustom &&
+          calculateDistanceKm(b.lat, b.lon, selectedStop.lat, selectedStop.lon) <= 8)
+    );
+
+    return (
+      <aside
+        aria-label={`Station details for ${selectedStop.name}`}
+        className={containerClass}
+      >
+        <MobileSheetHandle />
+
+        <div className="px-4 pt-3 pb-4 border-b border-slate-200/80 dark:border-slate-800 bg-gradient-to-b from-orange-50/40 via-white to-white dark:from-slate-900 dark:via-slate-900 dark:to-slate-900 shrink-0">
+          <div className="flex items-start justify-between gap-2.5">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                <span>{selectedStop.district}</span>
+                {selectedStop.code && (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <span className="font-mono tabular-nums">Code {selectedStop.code}</span>
+                  </>
+                )}
+                {selectedStop.isCustom && (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <span className="text-indigo-600 dark:text-indigo-400 font-semibold">Bus Stop</span>
+                  </>
+                )}
+                {selectedStop.isTerminal && (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <span className="text-orange-600 dark:text-orange-400 font-semibold">Major Terminal</span>
+                  </>
+                )}
+              </div>
+              <h2 className="text-lg font-bold tracking-tight text-slate-900 dark:text-white mt-0.5 font-display">
+                {selectedStop.name}
+              </h2>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={onShowMapMobile}
+                aria-label="View station on map"
+                className="md:hidden inline-flex items-center gap-1 px-2.5 min-h-[40px] rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200"
+              >
+                <MapIcon className="w-3.5 h-3.5" />
+                <span>Map</span>
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close station details"
+                className="w-10 h-10 md:w-8 md:h-8 flex items-center justify-center rounded-xl text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div>
+            <h3 className="text-xs font-semibold text-slate-900 dark:text-slate-200 mb-2">
+              Live Buses Approaching / Serving Station ({busesServingStop.length})
+            </h3>
+            {busesServingStop.length === 0 ? (
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                No active live buses currently approaching this stop. Check scheduled routes below.
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                {busesServingStop.slice(0, 12).map((b) => (
+                  <button
+                    key={b.registrationNumber}
+                    type="button"
+                    onClick={() => onSelectBus(b)}
+                    className="w-full p-2.5 rounded-xl border border-slate-200/90 dark:border-slate-800 hover:border-orange-500/60 hover:bg-orange-50/40 dark:hover:bg-slate-800/60 flex items-center justify-between text-left transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold font-mono tabular-nums text-slate-900 dark:text-white">
+                        {b.registrationNumber} · {b.routeNumber}
+                      </div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                        {b.fleet} · {b.routeName}
+                      </div>
+                    </div>
+                    <span className="text-xs font-mono tabular-nums text-orange-600 dark:text-orange-400 font-semibold shrink-0 ml-2">
+                      due {formatTime12Hour(b.nextStopEta)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <h3 className="text-xs font-semibold text-slate-900 dark:text-slate-200 mb-2">
+              Routes Calling Here ({routesServingStop.length})
+            </h3>
+            <div className="space-y-1.5">
+              {routesServingStop.map((r) => (
+                <button
+                  key={r.id}
+                  type="button"
+                  onClick={() => onSelectRoute(r)}
+                  className="w-full p-2.5 rounded-xl border border-slate-200/90 dark:border-slate-800 hover:border-orange-500/60 hover:bg-orange-50/40 dark:hover:bg-slate-800/60 flex items-center justify-between text-left transition-colors"
+                >
+                  <div className="min-w-0">
+                    <div className="text-xs font-semibold text-slate-900 dark:text-white font-mono tabular-nums">
+                      Route {r.routeNumber}
+                    </div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                      {r.name}
+                    </div>
+                  </div>
+                  <span className="text-xs text-orange-600 dark:text-orange-400 font-medium shrink-0 ml-2">
+                    {r.fleet}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </aside>
+    );
+  }
+
+  return null;
+};
