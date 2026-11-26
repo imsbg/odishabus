@@ -3,18 +3,135 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>Odisha Bus — Live Transit & Route Tracker</title>
-    <meta name="description" content="Free real-time bus tracking, route explorer, and station search for Odisha covering Shree Jagannath Express, OSRTC, Mukhyamantri Bus Seva, Ama Bus, Ama Bus AC, and Mo Bus." />
-    <meta property="og:title" content="Odisha Bus — Live Transit & Route Tracker" />
-    <meta property="og:description" content="Free real-time bus tracking, route explorer, and station search for Odisha covering Shree Jagannath Express, OSRTC, Mukhyamantri Bus Seva, Ama Bus, Ama Bus AC, and Mo Bus." />
+    <title>Odisha Bus – Live GPS Bus Tracker, OSRTC &amp; Ama Bus Routes</title>
+    <meta
+      name="description"
+      content="Track Odisha buses live for free. Check real-time GPS locations, routes, and timings for OSRTC, Shree Jagannath Express, Mukhyamantri Bus Seva &amp; Ama Bus."
+    />
+    <meta
+      name="keywords"
+      content="Odisha Bus, OSRTC live bus tracking, Shree Jagannath Express, Mukhyamantri Bus Seva, Ama Bus, Ama Bus AC, Mo Bus, Bhubaneswar bus timing, Cuttack bus tracker, Dhenkanal bus route, Puri bus live status, Odisha public transport map"
+    />
+    <meta name="robots" content="index, follow" />
+    <meta name="theme-color" content="#ea580c" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="shortcut icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="apple-touch-icon" href="./favicon.svg" />
+
+    <!-- OpenGraph Social Share Card -->
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Odisha Bus" />
+    <meta property="og:locale" content="en_IN" />
+    <meta property="og:title" content="Odisha Bus – Live GPS Bus Tracker, OSRTC &amp; Ama Bus Routes" />
+    <meta
+      property="og:description"
+      content="Track Odisha buses live for free. Check real-time GPS locations, routes, and timings for OSRTC, Shree Jagannath Express, Mukhyamantri Bus Seva &amp; Ama Bus."
+    />
+
+    <!-- Twitter / X Card -->
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Odisha Bus – Live GPS Bus Tracker, OSRTC &amp; Ama Bus Routes" />
+    <meta
+      name="twitter:description"
+      content="Track Odisha buses live for free. Check real-time GPS locations, routes, and timings for OSRTC, Shree Jagannath Express, Mukhyamantri Bus Seva &amp; Ama Bus."
+    />
+
+    <!-- Schema.org Structured Data (WebApplication + Article + FAQPage) -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebApplication",
+            "name": "Odisha Bus",
+            "url": "https://odishabus.netlify.app/",
+            "applicationCategory": "TravelApplication",
+            "operatingSystem": "All",
+            "inLanguage": "en-IN",
+            "description": "Free real-time Odisha bus tracking map and timetable finder for OSRTC, Shree Jagannath Express, Mukhyamantri Bus Seva, Ama Bus, Ama Bus AC, and Mo Bus.",
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "INR"
+            },
+            "areaServed": {
+              "@type": "State",
+              "name": "Odisha",
+              "containedInPlace": {
+                "@type": "Country",
+                "name": "India"
+              }
+            }
+          },
+          {
+            "@type": "BlogPosting",
+            "headline": "Odisha Bus Live Tracking Guide: OSRTC, Shree Jagannath Express, Mukhyamantri Bus Seva & Ama Bus",
+            "description": "Complete commuter guide to tracking Odisha government and city buses in real time for free, checking passing routes on any road, and finding station timings across all 30 districts.",
+            "url": "https://imsbg.github.io/odishabus/",
+            "author": {
+              "@type": "Organization",
+              "name": "Odisha Bus"
+            },
+            "publisher": {
+              "@type": "Organization",
+              "name": "Odisha Bus"
+            },
+            "inLanguage": "en-IN"
+          },
+          {
+            "@type": "FAQPage",
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "Is Odisha Bus live tracking completely free to use?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes. Odisha Bus is 100% free with no login or subscription required. You can track live buses, inspect route stops, and search stations across Odisha at odishabus.netlify.app."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Which Odisha bus services are supported on the live map?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Odisha Bus covers Shree Jagannath Express, OSRTC Express, Mukhyamantri Bus Seva (formerly LAccMI), Ama Bus, Ama Bus AC, and Mo Bus across urban and intercity Odisha corridors."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "How can I see which bus routes pass along my road?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Open the live Odisha Bus map and tap directly on any road or highway. The Routes on this road panel lists every passing bus service and lets you preview its complete stop-by-stop path."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Can I find buses near my current GPS location?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes. Tap the Center on my location button on the map to zoom to your real GPS coordinates with a blue location dot, and keep In map view enabled in the sidebar to see live buses moving around you."
+                }
+              }
+            ]
+          }
+        ]
+      }
+    </script>
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
   </head>
-  <body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 antialiased selection:bg-orange-500 selection:text-white overflow-hidden">
+  <body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 antialiased selection:bg-orange-500 selection:text-white">
     <div id="root"></div>
+    <noscript>
+      <main style="max-width: 820px; margin: 2rem auto; padding: 1.5rem; font-family: system-ui, sans-serif; line-height: 1.65;">
+        <h1>Odisha Bus — Live GPS Bus Tracker for OSRTC, Shree Jagannath Express, Mukhyamantri Bus Seva &amp; Ama Bus</h1>
+        <p>Track real-time Odisha government and city buses across all 30 districts for free. View live vehicle positions, check passing routes on any road, search bus stands including Bhubaneswar BSABT, Cuttack Badambadi, Puri, Dhenkanal, Kamakhyanagar, Mahuli, Sambalpur, Berhampur, and Rourkela, and plan your journey with AM/PM stop timings.</p>
+        <p><a href="https://odishabus.netlify.app/">Open the Live Interactive Odisha Bus Map</a></p>
+      </main>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
