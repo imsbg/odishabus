@@ -30,6 +30,7 @@ export interface BusStop {
   lon: number;
   isTerminal?: boolean;
   isCustom?: boolean;
+  mirrorStopName?: string;
   code?: string;
   degree?: number;
 }

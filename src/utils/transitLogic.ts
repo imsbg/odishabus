@@ -272,10 +272,24 @@ export function filterRoutes(
 export function searchStops(stops: BusStop[], query: string): BusStop[] {
   const q = query.trim().toLowerCase();
   if (!q) return stops;
-  return stops.filter((stop) => {
+  const matched = stops.filter((stop) => {
     const hay = `${stop.name} ${stop.district} ${stop.code || ''}`.toLowerCase();
     return hay.includes(q);
   });
+  return matched.sort((a, b) => {
+    const aName = a.name.toLowerCase();
+    const bName = b.name.toLowerCase();
+    const aExact = aName === q ? 0 : aName.startsWith(q) ? 1 : 2;
+    const bExact = bName === q ? 0 : bName.startsWith(q) ? 1 : 2;
+    if (aExact !== bExact) return aExact - bExact;
+    return aName.length - bName.length;
+  });
+}
+
+function normalizeTripPlannerStopQuery(raw: string): string {
+  const q = raw.trim().toLowerCase();
+  if (q === 'mahuli') return 'kusumajodi';
+  return q;
 }
 
 export function findDirectJourneys(
@@ -285,8 +299,8 @@ export function findDirectJourneys(
   toQuery: string,
   fleetFilter: FleetFilter = 'ALL'
 ): DirectJourneyMatch[] {
-  const f = fromQuery.trim().toLowerCase();
-  const t = toQuery.trim().toLowerCase();
+  const f = normalizeTripPlannerStopQuery(fromQuery);
+  const t = normalizeTripPlannerStopQuery(toQuery);
   if (!f || !t || f === t) return [];
 
   const matches: DirectJourneyMatch[] = [];
@@ -814,6 +828,57 @@ export function parseLiveTripDetail(
     tripStops: stops,
     path: finalPath
   };
+}
+
+/**
+ * Returns the routes and live buses serving a selected station.
+ * If a stop specifies `mirrorStopName` (e.g., Mahuli -> Kusumajodi), it resolves
+ * the exact same routes and live buses as that sibling stop.
+ */
+export function getStopRoutesAndBuses(
+  stop: BusStop,
+  allStops: BusStop[],
+  allRoutes: BusRoute[],
+  allBuses: LiveBus[]
+): { routesServingStop: BusRoute[]; busesServingStop: LiveBus[] } {
+  const referenceStop = stop.mirrorStopName
+    ? allStops.find((s) =>
+        s.name.toLowerCase().includes(stop.mirrorStopName!.toLowerCase())
+      ) || {
+        ...stop,
+        id: `mirror-${stop.mirrorStopName.toLowerCase()}`,
+        name: stop.mirrorStopName
+      }
+    : stop;
+
+  const firstToken = referenceStop.name.toLowerCase().split(' ')[0];
+
+  const routesServingStop = allRoutes.filter((r) =>
+    r.stops.some(
+      (s) =>
+        s.stopId === referenceStop.id ||
+        (firstToken.length >= 3 && s.stopName.toLowerCase().includes(firstToken))
+    )
+  );
+
+  const routeNumbersServingStop = new Set(
+    routesServingStop.map((r) => r.routeNumber.trim().toUpperCase()).filter(Boolean)
+  );
+
+  const busesServingStop = allBuses.filter(
+    (b) =>
+      (b.routeNumber && routeNumbersServingStop.has(b.routeNumber.trim().toUpperCase())) ||
+      (firstToken.length >= 3 &&
+        (b.origin.toLowerCase().includes(firstToken) ||
+          b.destination.toLowerCase().includes(firstToken))) ||
+      b.tripStops.some(
+        (s) =>
+          s.stopId === referenceStop.id ||
+          (firstToken.length >= 3 && s.stopName.toLowerCase().includes(firstToken))
+      )
+  );
+
+  return { routesServingStop, busesServingStop };
 }
 
 export function getInitialDataset() {

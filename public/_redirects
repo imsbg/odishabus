@@ -1,0 +1,2 @@
+/osrtc-proxy/*  https://maps.reclaim.city/osrtc/:splat  200!
+/*              /index.html                              200

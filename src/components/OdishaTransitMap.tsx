@@ -445,7 +445,7 @@ function buildStopsGeoJson(stops: BusStop[], selectedStopId: string | null): Geo
     type: 'FeatureCollection',
     features: stops.map((stop) => {
       const isSelected = selectedStopId === stop.id;
-      const tier = isSelected || stop.isCustom
+      const tier = isSelected
         ? 1
         : stop.isTerminal || (stop.degree || 0) >= 14
         ? 1
@@ -464,7 +464,6 @@ function buildStopsGeoJson(stops: BusStop[], selectedStopId: string | null): Geo
           district: stop.district,
           tier,
           isTerminal: stop.isTerminal ? 1 : 0,
-          isCustom: stop.isCustom ? 1 : 0,
           isSelected: isSelected ? 1 : 0
         }
       };
@@ -759,8 +758,6 @@ export const OdishaTransitMap: React.FC<OdishaTransitMapProps> = ({
             'case',
             ['==', ['get', 'isSelected'], 1],
             7.5,
-            ['==', ['get', 'isCustom'], 1],
-            6.5,
             ['==', ['get', 'isTerminal'], 1],
             5.5,
             ['==', ['get', 'tier'], 1],
@@ -771,21 +768,12 @@ export const OdishaTransitMap: React.FC<OdishaTransitMapProps> = ({
             'case',
             ['==', ['get', 'isSelected'], 1],
             '#ea580c',
-            ['==', ['get', 'isCustom'], 1],
-            '#4f46e5',
             ['==', ['get', 'isTerminal'], 1],
             '#f97316',
             dark ? '#38bdf8' : '#0f766e'
           ],
           'circle-stroke-color': dark ? '#0f172a' : '#ffffff',
-          'circle-stroke-width': [
-            'case',
-            ['==', ['get', 'isSelected'], 1],
-            2.5,
-            ['==', ['get', 'isCustom'], 1],
-            2.2,
-            1.6
-          ]
+          'circle-stroke-width': ['case', ['==', ['get', 'isSelected'], 1], 2.5, 1.6]
         }
       });
     }
@@ -800,15 +788,7 @@ export const OdishaTransitMap: React.FC<OdishaTransitMapProps> = ({
           visibility: layersRef.current.stops ? 'visible' : 'none',
           'text-field': ['get', 'name'],
           'text-font': ['Noto Sans Regular'],
-          'text-size': [
-            'interpolate',
-            ['linear'],
-            ['zoom'],
-            8,
-            ['case', ['==', ['get', 'isCustom'], 1], 12, 10],
-            13,
-            ['case', ['==', ['get', 'isCustom'], 1], 13.5, 12]
-          ],
+          'text-size': ['interpolate', ['linear'], ['zoom'], 8, 10, 13, 12],
           'text-offset': [0, 1.15],
           'text-anchor': 'top',
           'text-optional': true
@@ -816,20 +796,14 @@ export const OdishaTransitMap: React.FC<OdishaTransitMapProps> = ({
         filter: [
           'any',
           ['==', ['get', 'isSelected'], 1],
-          ['==', ['get', 'isCustom'], 1],
           ['==', ['get', 'tier'], 1],
           ['all', ['==', ['get', 'tier'], 2], ['>=', ['zoom'], 9.5]],
           ['all', ['==', ['get', 'tier'], 3], ['>=', ['zoom'], 11.5]]
         ],
         paint: {
-          'text-color': [
-            'case',
-            ['==', ['get', 'isCustom'], 1],
-            dark ? '#a5b4fc' : '#3730a3',
-            dark ? '#e2e8f0' : '#1e293b'
-          ],
+          'text-color': dark ? '#e2e8f0' : '#1e293b',
           'text-halo-color': dark ? '#0b1220' : '#ffffff',
-          'text-halo-width': 1.6
+          'text-halo-width': 1.5
         }
       });
     }

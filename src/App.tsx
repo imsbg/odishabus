@@ -16,18 +16,22 @@ import {
   X
 } from 'lucide-react';
 import { FLEET_CATEGORIES } from './utils/odishaSeedData';
-import { CUSTOM_BUS_STOPS, mergeCustomBusStops } from './utils/customStops';
+import { CUSTOM_BUS_STOPS } from './utils/customStops';
+import {
+  fetchBusTripDetailData,
+  fetchLiveFeedsData,
+  fetchNetworkDirectoryData,
+  fetchRouteRoadPathData,
+  fetchRoutesOnRoadData
+} from './utils/clientOsrtcLoader';
 import {
   addHistoryEntry,
-  calculateDistanceKm,
-  classifyFleetCategory,
   filterBusesByMapBounds,
   filterLiveBuses,
   filterRoutes,
   findDirectJourneys,
   findRoutesNearRoadPoint,
   formatTime12Hour,
-  formatTitleCase,
   isBusSleeping,
   parseGtfsRealtimePayload,
   parseLiveTripDetail,
@@ -51,12 +55,6 @@ type ActiveWorkspaceTab = 'buses' | 'routes' | 'stations' | 'planner' | 'fleets'
 type MobileSheetMode = 'map' | 'explore' | 'details';
 
 const HISTORY_STORAGE_KEY = 'odisha_bus_history_v1';
-
-const DIRECT_GTFS_FALLBACK = {
-  status: 'https://maps.reclaim.city/osrtc/rt/status.json',
-  vehiclePositions: 'https://maps.reclaim.city/osrtc/rt/vehicle_positions.json',
-  tripUpdates: 'https://maps.reclaim.city/osrtc/rt/trip_updates.json'
-};
 
 const FLEET_SWATCH_COLORS: Record<string, string> = {
   'Shree Jagannath Express': '#e8641b',
@@ -170,28 +168,23 @@ export default function App() {
     setHistory((prev) => addHistoryEntry(prev, entry, 8));
   }, []);
 
-  // Fetch full live trip stops (passed + upcoming) and road-snapped route path via /api/osrtc/trip/:id
+  // Fetch full live trip stops (passed + upcoming) and road-snapped route path (Express or Netlify proxy)
   const loadBusFullTrip = useCallback(async (bus: LiveBus) => {
     if (!bus.id) return;
     setIsLoadingTrip(true);
     try {
-      const res = await fetch(`/api/osrtc/trip/${encodeURIComponent(bus.id)}?t=${Date.now()}`, {
-        cache: 'no-store'
-      });
-      if (res.ok) {
-        const payload = await res.json();
-        if (payload?.trip && Array.isArray(payload.trip.stops)) {
-          const enriched = parseLiveTripDetail(bus, payload.trip, payload.roadPath);
-          enrichedTripsRef.current.set(bus.registrationNumber, enriched);
-          setSelectedBus((curr) =>
-            curr && curr.registrationNumber === bus.registrationNumber ? enriched : curr
-          );
-          setBuses((prev) =>
-            prev.map((item) =>
-              item.registrationNumber === bus.registrationNumber ? enriched : item
-            )
-          );
-        }
+      const payload = await fetchBusTripDetailData(bus.id);
+      if (payload?.trip && Array.isArray(payload.trip.stops)) {
+        const enriched = parseLiveTripDetail(bus, payload.trip, payload.roadPath);
+        enrichedTripsRef.current.set(bus.registrationNumber, enriched);
+        setSelectedBus((curr) =>
+          curr && curr.registrationNumber === bus.registrationNumber ? enriched : curr
+        );
+        setBuses((prev) =>
+          prev.map((item) =>
+            item.registrationNumber === bus.registrationNumber ? enriched : item
+          )
+        );
       }
     } catch {
       // Retain existing bus data if trip endpoint is unavailable
@@ -200,124 +193,50 @@ export default function App() {
     }
   }, []);
 
-  // Load ALL real Odisha stations & routes (intercity OSRTC/MBS/SJE + city CRUT Ama Bus / Ama Bus AC)
+  // Load ALL real Odisha stations & routes (Express /api/osrtc/network or Netlify /osrtc-proxy/*)
   useEffect(() => {
     let active = true;
-    (async () => {
+    const loadNetwork = async (attempt = 1) => {
       try {
-        const res = await fetch('/api/osrtc/network');
-        if (!res.ok || !active) return;
-        const data = await res.json();
-
-        if (Array.isArray(data?.stops) && data.stops.length > 0) {
-          const customById = new Map(CUSTOM_BUS_STOPS.map((cs) => [cs.id, cs]));
-          const realStops: BusStop[] = data.stops.map((st: any) => {
-            const customMeta = customById.get(st.id);
-            if (customMeta) {
-              return { ...customMeta };
-            }
-            const degree = Number(st.degree || 1);
-            return {
-              id: st.id,
-              name: formatTitleCase(st.name),
-              district: st.isCity ? 'CRUT Urban Network' : 'Odisha Bus Network',
-              lat: st.lat,
-              lon: st.lon,
-              degree,
-              isTerminal: degree >= 25
-            };
-          });
-          if (active) {
-            setStops(mergeCustomBusStops(realStops));
-          }
+        const { stops: realStops, routes: realRoutes } = await fetchNetworkDirectoryData();
+        if (!active) return;
+        if (realStops.length > 0) {
+          setStops(realStops);
         }
-
-        if (Array.isArray(data?.routes) && data.routes.length > 0) {
-          const realRoutes: BusRoute[] = [];
-          for (const r of data.routes) {
-            const fleet = classifyFleetCategory(r.typeName, r.routeNumber, r.serviceKey);
-            const stList = r.stops || [];
-            if (stList.length < 2) continue;
-            const first = stList[0];
-            const last = stList[stList.length - 1];
-            const distKm = calculateDistanceKm(first.lat, first.lon, last.lat, last.lon);
-            realRoutes.push({
-              id: r.serviceKey || r.routeNumber,
-              serviceKey: r.serviceKey,
-              routeNumber: r.routeNumber,
-              name: `${formatTitleCase(r.origin || first.stopName)} → ${formatTitleCase(r.destination || last.stopName)}`,
-              origin: formatTitleCase(r.origin || first.stopName),
-              destination: formatTitleCase(r.destination || last.stopName),
-              fleet,
-              corridor: r.cityName ? `${r.cityName} City Transit` : 'Odisha Intercity Network',
-              distanceKm: distKm,
-              durationLabel: `${Math.max(20, Math.round(distKm * 1.4))}m`,
-              departures: r.departure ? [r.departure] : [],
-              stops: stList.map((s: any, idx: number) => ({
-                stopId: s.stopId,
-                stopName: formatTitleCase(s.stopName),
-                lat: s.lat,
-                lon: s.lon,
-                scheduledTime: s.scheduledTime || '--:--',
-                status: idx === 0 ? 'passed' : 'upcoming',
-                sequence: s.sequence || idx + 1
-              })),
-              path: stList.map((s: any) => [s.lat, s.lon] as [number, number])
-            });
-          }
-          if (active) {
-            setRoutes(realRoutes);
-          }
+        if (realRoutes.length > 0) {
+          setRoutes(realRoutes);
+        }
+        // Retry once after 2.5s if network stops failed to load on initial static boot
+        if (realStops.length <= CUSTOM_BUS_STOPS.length && attempt < 2) {
+          setTimeout(() => {
+            if (active) loadNetwork(attempt + 1);
+          }, 2500);
         }
       } catch {
-        // Network index unavailable
+        if (attempt < 2 && active) {
+          setTimeout(() => {
+            if (active) loadNetwork(attempt + 1);
+          }, 2500);
+        }
       }
-    })();
+    };
+    loadNetwork(1);
     return () => {
       active = false;
     };
   }, []);
 
-  // Live Odisha sync: uses /api/osrtc/live with direct CORS fallback
+  // Live Odisha sync: uses /api/osrtc/live on Express or /osrtc-proxy/* on Netlify static hosting
   const syncLiveGtfsFeeds = useCallback(async () => {
     setIsSyncing(true);
     try {
-      let statusJson: any = null;
-      let vpJson: any = null;
-      let tuJson: any = null;
-      let lvJson: any = null;
-      let rlJson: any = null;
-
-      try {
-        const proxyRes = await fetch(`/api/osrtc/live?t=${Date.now()}`, { cache: 'no-store' });
-        if (proxyRes.ok) {
-          const payload = await proxyRes.json();
-          statusJson = payload.status;
-          vpJson = payload.vehiclePositions;
-          tuJson = payload.tripUpdates;
-          lvJson = payload.liveVehicles;
-          rlJson = payload.routeLink;
-        }
-      } catch {
-        // Fallback to CORS-enabled GTFS-RT endpoints
-      }
-
-      if (!lvJson && !vpJson) {
-        const [sRes, vRes, tRes] = await Promise.allSettled([
-          fetch(`${DIRECT_GTFS_FALLBACK.status}?t=${Date.now()}`, { cache: 'no-store' }).then((r) =>
-            r.ok ? r.json() : null
-          ),
-          fetch(`${DIRECT_GTFS_FALLBACK.vehiclePositions}?t=${Date.now()}`, { cache: 'no-store' }).then(
-            (r) => (r.ok ? r.json() : null)
-          ),
-          fetch(`${DIRECT_GTFS_FALLBACK.tripUpdates}?t=${Date.now()}`, { cache: 'no-store' }).then((r) =>
-            r.ok ? r.json() : null
-          )
-        ]);
-        statusJson = sRes.status === 'fulfilled' ? sRes.value : null;
-        vpJson = vRes.status === 'fulfilled' ? vRes.value : null;
-        tuJson = tRes.status === 'fulfilled' ? tRes.value : null;
-      }
+      const {
+        status: statusJson,
+        vehiclePositions: vpJson,
+        tripUpdates: tuJson,
+        liveVehicles: lvJson,
+        routeLink: rlJson
+      } = await fetchLiveFeedsData();
 
       if (lvJson || vpJson || statusJson) {
         const { buses: mergedBuses, status: mergedStatus } = parseGtfsRealtimePayload(
@@ -412,17 +331,14 @@ export default function App() {
         sublabel: route.origin
       });
 
-      // Fetch exact road-snapped polyline for this route from server geometry index
+      // Fetch exact road-snapped polyline for this route (Express or Netlify proxy)
       const lookupKey = route.serviceKey || route.routeNumber;
       if (lookupKey) {
         try {
-          const res = await fetch(`/api/osrtc/route-path/${encodeURIComponent(lookupKey)}`);
-          if (res.ok) {
-            const data = await res.json();
-            if (Array.isArray(data?.roadPath) && data.roadPath.length >= 2) {
-              const enrichedRoute = { ...route, path: data.roadPath };
-              setSelectedRoute((curr) => (curr && curr.id === route.id ? enrichedRoute : curr));
-            }
+          const roadPath = await fetchRouteRoadPathData(lookupKey);
+          if (roadPath && roadPath.length >= 2) {
+            const enrichedRoute = { ...route, path: roadPath };
+            setSelectedRoute((curr) => (curr && curr.id === route.id ? enrichedRoute : curr));
           }
         } catch {
           // Keep stop-to-stop polyline fallback
@@ -473,49 +389,11 @@ export default function App() {
       setMobilePanel('details');
 
       try {
-        const res = await fetch(
-          `/api/osrtc/routes-on-road?lat=${encodeURIComponent(lat.toFixed(5))}&lon=${encodeURIComponent(lon.toFixed(5))}`
-        );
-        if (res.ok) {
-          const data = await res.json();
-          const serverRoutes: BusRoute[] = (Array.isArray(data?.routes) ? data.routes : []).map(
-            (r: any) => {
-              const fleet = classifyFleetCategory(r.typeName, r.routeNumber, r.serviceKey);
-              const stList = r.stops || [];
-              const first = stList[0];
-              const last = stList[stList.length - 1];
-              const distKm =
-                first && last ? calculateDistanceKm(first.lat, first.lon, last.lat, last.lon) : 15;
-              return {
-                id: r.serviceKey || r.routeNumber,
-                serviceKey: r.serviceKey,
-                routeNumber: r.routeNumber,
-                name: `${formatTitleCase(r.origin || first?.stopName || '')} → ${formatTitleCase(r.destination || last?.stopName || '')}`,
-                origin: formatTitleCase(r.origin || first?.stopName || ''),
-                destination: formatTitleCase(r.destination || last?.stopName || ''),
-                fleet,
-                corridor: r.cityName ? `${r.cityName} City Transit` : 'Odisha Intercity Network',
-                distanceKm: distKm,
-                durationLabel: `${Math.max(20, Math.round(distKm * 1.4))}m`,
-                departures: r.departure ? [r.departure] : ['07:00', '12:00', '16:30'],
-                stops: stList.map((s: any, idx: number) => ({
-                  stopId: s.stopId,
-                  stopName: formatTitleCase(s.stopName),
-                  lat: s.lat,
-                  lon: s.lon,
-                  scheduledTime: s.scheduledTime || '--:--',
-                  status: idx === 0 ? 'passed' : 'upcoming',
-                  sequence: s.sequence || idx + 1
-                })),
-                path: stList.map((s: any) => [s.lat, s.lon] as [number, number])
-              };
-            }
-          );
-
-          // Merge server road-segment matches + local curated city route matches without duplicates
+        const roadData = await fetchRoutesOnRoadData(lat, lon);
+        if (roadData) {
           const seenKeys = new Set<string>();
           const combined: BusRoute[] = [];
-          for (const r of [...serverRoutes, ...localMatches]) {
+          for (const r of [...roadData.routes, ...localMatches]) {
             const key = `${r.routeNumber}|${r.origin}|${r.destination}`;
             if (seenKeys.has(key)) continue;
             seenKeys.add(key);
@@ -526,7 +404,7 @@ export default function App() {
             curr && curr.lat === lat && curr.lon === lon
               ? {
                   ...curr,
-                  nearestStopName: data?.nearestStopName ? formatTitleCase(data.nearestStopName) : undefined,
+                  nearestStopName: roadData.nearestStopName,
                   routes: combined,
                   isLoading: false
                 }
@@ -1474,6 +1352,7 @@ export default function App() {
           selectedRoad={selectedRoad}
           allBuses={buses}
           allRoutes={routes}
+          allStops={stops}
           isLoadingTrip={isLoadingTrip}
           followBus={followBus}
           mobileVisible={mobilePanel === 'details'}

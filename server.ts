@@ -307,6 +307,57 @@ async function createServer() {
   const app = express();
   app.disable('x-powered-by');
 
+  // 0. Allowlisted static-hosting-compatible proxy (/osrtc-proxy/* matches Netlify _redirects)
+  app.get('/osrtc-proxy/*', async (req, res) => {
+    const rawSplat = String((req.params as any)[0] || '').replace(/^\/+/, '');
+    const isAllowedStatic = Boolean(STATIC_UPSTREAM_ALLOWLIST[rawSplat]);
+    const isAllowedTrip = /^live\/trip\/[a-zA-Z0-9_-]{1,32}\.json$/.test(rawSplat);
+    if (!isAllowedStatic && !isAllowedTrip) {
+      res.status(400).json({ error: 'Disallowed proxy path' });
+      return;
+    }
+    try {
+      if (isAllowedStatic) {
+        const data = await fetchAllowlistedJson(rawSplat);
+        res.setHeader(
+          'Cache-Control',
+          rawSplat.startsWith('live/net/') || rawSplat.startsWith('city/data/')
+            ? 'public, max-age=600'
+            : 'no-store'
+        );
+        res.json(data);
+        return;
+      }
+      const tripUrl = new URL(rawSplat, UPSTREAM_BASE);
+      if (
+        tripUrl.origin !== 'https://maps.reclaim.city' ||
+        !tripUrl.pathname.startsWith('/osrtc/live/trip/')
+      ) {
+        res.status(400).json({ error: 'Invalid proxy path' });
+        return;
+      }
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10_000);
+      try {
+        const upstreamRes = await fetch(tripUrl.toString(), {
+          headers: { Accept: 'application/json' },
+          signal: controller.signal
+        });
+        if (!upstreamRes.ok) {
+          res.status(upstreamRes.status).json({ error: 'Upstream trip not found' });
+          return;
+        }
+        const data = await upstreamRes.json();
+        res.setHeader('Cache-Control', 'no-store');
+        res.json(data);
+      } finally {
+        clearTimeout(timeout);
+      }
+    } catch {
+      res.status(502).json({ error: 'Upstream proxy failed' });
+    }
+  });
+
   // 1. Live combined Odisha bus snapshot (vehicles + routelink + GTFS-RT status + trip_updates)
   app.get('/api/osrtc/live', async (_req, res) => {
     try {
@@ -568,15 +619,16 @@ async function createServer() {
         });
       }
 
-      // Include custom Odisha bus stops (e.g., Mahuli)
+      // Include Mahuli bus stop matching Kusumajodi's degree so it renders identically to other stops
       if (!stopsList.some((s) => s.id === 'custom-mahuli')) {
+        const kusumajodi = stopsList.find((s) => s.name.toLowerCase().includes('kusumajodi'));
         stopsList.push({
           id: 'custom-mahuli',
           name: 'Mahuli',
           lat: 20.833643,
           lon: 85.530248,
           isCity: false,
-          degree: 16
+          degree: kusumajodi ? kusumajodi.degree : 6
         });
       }
 

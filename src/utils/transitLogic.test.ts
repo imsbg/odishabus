@@ -13,6 +13,7 @@ import {
   formatGpsAge,
   formatTime12Hour,
   getInitialDataset,
+  getStopRoutesAndBuses,
   isBusSleeping,
   parseGtfsRealtimePayload,
   parseLiveTripDetail,
@@ -162,15 +163,25 @@ test('isBusSleeping and filterBusesByMapBounds accurately detect arrived buses a
   assert.ok(visible.every((b) => b.lat >= 20.15 && b.lat <= 20.4 && b.lon >= 85.7 && b.lon <= 85.95));
 });
 
-test('mergeCustomBusStops includes Mahuli at exact coordinates (20.833643, 85.530248)', () => {
-  const { stops } = getInitialDataset();
-  const merged = mergeCustomBusStops(stops);
+test('mergeCustomBusStops includes Mahuli (20.833643, 85.530248) matching Kusumajodi style and bus/route data', () => {
+  const { stops, routes, buses } = getInitialDataset();
+  const kusumajodiStop = {
+    id: 'nkusumajodi2085',
+    name: 'Kusumajodi',
+    district: 'Odisha Bus Network',
+    lat: 20.85,
+    lon: 85.53,
+    degree: 9
+  };
+  const merged = mergeCustomBusStops([...stops, kusumajodiStop]);
   const mahuli = merged.find((s) => s.id === 'custom-mahuli');
   assert.ok(mahuli);
   assert.equal(mahuli.name, 'Mahuli');
   assert.equal(mahuli.lat, 20.833643);
   assert.equal(mahuli.lon, 85.530248);
-  assert.equal(mahuli.isCustom, true);
+  assert.equal(mahuli.isCustom, undefined);
+  assert.equal(mahuli.degree, kusumajodiStop.degree);
+  assert.equal(mahuli.district, kusumajodiStop.district);
 
   // Deduplicates if already present
   const mergedAgain = mergeCustomBusStops(merged);
@@ -180,5 +191,40 @@ test('mergeCustomBusStops includes Mahuli at exact coordinates (20.833643, 85.53
   const matches = searchStops(merged, 'Mahuli');
   assert.ok(matches.some((s) => s.id === 'custom-mahuli'));
   assert.ok(CUSTOM_BUS_STOPS.some((s) => s.name === 'Mahuli'));
+
+  // Mahuli returns the EXACT same routes and live buses as Kusumajodi
+  const mockRoute = {
+    ...routes[0],
+    id: 'route-kusumajodi-1',
+    stops: [
+      ...routes[0].stops,
+      {
+        stopId: kusumajodiStop.id,
+        stopName: 'Kusumajodi',
+        lat: kusumajodiStop.lat,
+        lon: kusumajodiStop.lon,
+        scheduledTime: '09:15',
+        status: 'upcoming' as const,
+        sequence: 99
+      }
+    ]
+  };
+  const mockBus = {
+    ...buses[0],
+    registrationNumber: 'OD06TEST1',
+    tripStops: mockRoute.stops
+  };
+  const mahuliData = getStopRoutesAndBuses(mahuli, merged, [mockRoute], [mockBus]);
+  const kusumajodiData = getStopRoutesAndBuses(kusumajodiStop, merged, [mockRoute], [mockBus]);
+  assert.deepEqual(
+    mahuliData.routesServingStop.map((r) => r.id),
+    kusumajodiData.routesServingStop.map((r) => r.id)
+  );
+  assert.deepEqual(
+    mahuliData.busesServingStop.map((b) => b.registrationNumber),
+    kusumajodiData.busesServingStop.map((b) => b.registrationNumber)
+  );
+  assert.equal(mahuliData.routesServingStop.length, 1);
+  assert.equal(mahuliData.busesServingStop.length, 1);
 });
 

@@ -9,10 +9,9 @@ import {
 } from '../utils/transitTypes';
 import { CoachLiverySvg } from './CoachLiverySvg';
 import {
-  calculateDistanceKm,
   estimateFareInr,
-  findRoutesNearRoadPoint,
   formatTime12Hour,
+  getStopRoutesAndBuses,
   isBusSleeping
 } from '../utils/transitLogic';
 
@@ -23,6 +22,7 @@ interface BusDetailPanelProps {
   selectedRoad: RoadRoutesSelection | null;
   allBuses: LiveBus[];
   allRoutes: BusRoute[];
+  allStops: BusStop[];
   isLoadingTrip: boolean;
   followBus: boolean;
   mobileVisible: boolean;
@@ -41,6 +41,7 @@ export const BusDetailPanel: React.FC<BusDetailPanelProps> = ({
   selectedRoad,
   allBuses,
   allRoutes,
+  allStops,
   isLoadingTrip,
   followBus,
   mobileVisible,
@@ -646,37 +647,11 @@ export const BusDetailPanel: React.FC<BusDetailPanelProps> = ({
 
   // 4. SELECTED STATION / STOP VIEW
   if (selectedStop) {
-    const firstToken = selectedStop.name.toLowerCase().split(' ')[0];
-    const directRouteMatches = allRoutes.filter((r) =>
-      r.stops.some(
-        (s) =>
-          s.stopId === selectedStop.id ||
-          (firstToken.length >= 3 && s.stopName.toLowerCase().includes(firstToken))
-      )
-    );
-    const nearbyRoadRoutes = selectedStop.isCustom
-      ? findRoutesNearRoadPoint(allRoutes, selectedStop.lat, selectedStop.lon, 2.5)
-      : [];
-    const seenRouteIds = new Set<string>();
-    const routesServingStop: BusRoute[] = [];
-    for (const r of [...directRouteMatches, ...nearbyRoadRoutes]) {
-      if (seenRouteIds.has(r.id)) continue;
-      seenRouteIds.add(r.id);
-      routesServingStop.push(r);
-    }
-
-    const busesServingStop = allBuses.filter(
-      (b) =>
-        (firstToken.length >= 3 &&
-          (b.origin.toLowerCase().includes(firstToken) ||
-            b.destination.toLowerCase().includes(firstToken))) ||
-        b.tripStops.some(
-          (s) =>
-            s.stopId === selectedStop.id ||
-            (firstToken.length >= 3 && s.stopName.toLowerCase().includes(firstToken))
-        ) ||
-        (selectedStop.isCustom &&
-          calculateDistanceKm(b.lat, b.lon, selectedStop.lat, selectedStop.lon) <= 8)
+    const { routesServingStop, busesServingStop } = getStopRoutesAndBuses(
+      selectedStop,
+      allStops,
+      allRoutes,
+      allBuses
     );
 
     return (
@@ -695,12 +670,6 @@ export const BusDetailPanel: React.FC<BusDetailPanelProps> = ({
                   <>
                     <span aria-hidden="true">·</span>
                     <span className="font-mono tabular-nums">Code {selectedStop.code}</span>
-                  </>
-                )}
-                {selectedStop.isCustom && (
-                  <>
-                    <span aria-hidden="true">·</span>
-                    <span className="text-indigo-600 dark:text-indigo-400 font-semibold">Bus Stop</span>
                   </>
                 )}
                 {selectedStop.isTerminal && (
