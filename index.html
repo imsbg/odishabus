@@ -40,8 +40,58 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
 
-    <!-- Static styles for GitHub Pages SEO Blog fallback (replaced automatically when React mounts on Netlify/Vite) -->
+    <!-- Detect app hosts (Netlify/localhost) synchronously before first paint so GitHub Pages SEO HTML never flashes -->
+    <script>
+      (function () {
+        try {
+          var host = (window.location.hostname || '').toLowerCase();
+          var params = new URLSearchParams(window.location.search || '');
+          var view = (params.get('view') || params.get('mode') || '').toLowerCase().trim();
+          var isSeoHost = host === 'imsbg.github.io' || host.endsWith('.github.io');
+          var showSeo =
+            view === 'guide' ||
+            view === 'seo' ||
+            view === 'blog' ||
+            (isSeoHost && view !== 'app' && view !== 'map' && !params.has('bus'));
+          if (!showSeo) {
+            document.documentElement.classList.add('is-app-host');
+          }
+          var savedTheme = window.localStorage && window.localStorage.getItem('odisha_bus_theme');
+          if (savedTheme === 'dark') {
+            document.documentElement.classList.add('dark');
+          }
+        } catch (e) {}
+      })();
+    </script>
+
+    <!-- Static styles for GitHub Pages SEO Blog fallback (never shown on Netlify/app hosts) -->
     <style>
+      html.is-app-host .gh-seo { display: none !important; }
+      .gh-app-boot { display: none; }
+      html.is-app-host .gh-app-boot {
+        display: flex;
+        min-height: 100dvh;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        gap: 12px;
+        background: #f8fafc;
+        color: #334155;
+        font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+        font-size: 14px;
+        font-weight: 600;
+      }
+      html.dark.is-app-host .gh-app-boot {
+        background: #020617;
+        color: #cbd5e1;
+      }
+      .gh-app-boot-logo {
+        width: 44px;
+        height: 44px;
+        border-radius: 12px;
+        box-shadow: 0 6px 20px rgba(234, 88, 12, 0.22);
+      }
+      /* GH_PAGES_SEO_CSS_START */
       .gh-seo { font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif; color: #0f172a; background: #f8fafc; margin: 0; line-height: 1.65; }
       .gh-seo *, .gh-seo *::before, .gh-seo *::after { box-sizing: border-box; }
       .gh-seo h1, .gh-seo h2, .gh-seo h3 { font-family: 'Outfit', system-ui, sans-serif; letter-spacing: -0.02em; margin: 0; color: #020617; }
@@ -104,11 +154,17 @@
         .gh-seo-stats { grid-template-columns: repeat(2, 1fr); }
         .gh-seo-embed-frame { height: 520px; }
       }
+      /* GH_PAGES_SEO_CSS_END */
     </style>
   </head>
   <body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 antialiased selection:bg-orange-500 selection:text-white">
     <div id="root">
-      <!-- Pre-rendered SEO Blog & Feature Guide (displays instantaneously on GitHub Pages without requiring JS build; replaced by React live map on Netlify) -->
+      <div class="gh-app-boot" aria-live="polite">
+        <img src="./favicon.svg" alt="Odisha Bus" class="gh-app-boot-logo" />
+        <span>Loading Odisha Bus Live Map…</span>
+      </div>
+      <!-- GH_PAGES_SEO_START -->
+      <!-- Pre-rendered SEO Blog & Feature Guide (displays instantaneously on GitHub Pages; hidden and stripped on Netlify/app hosts) -->
       <div class="gh-seo">
         <header class="gh-seo-header">
           <div class="gh-seo-container gh-seo-nav">
@@ -401,7 +457,14 @@
           </div>
         </footer>
       </div>
+      <!-- GH_PAGES_SEO_END -->
     </div>
+    <script>
+      if (document.documentElement.classList.contains('is-app-host')) {
+        var seoEl = document.querySelector('#root > .gh-seo');
+        if (seoEl && seoEl.parentNode) seoEl.parentNode.removeChild(seoEl);
+      }
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

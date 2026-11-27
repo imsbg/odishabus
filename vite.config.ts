@@ -10,6 +10,21 @@ export default defineConfig(() => {
     plugins: [
       react(),
       tailwindcss(),
+      {
+        name: 'strip-gh-pages-seo-on-netlify',
+        apply: 'build',
+        transformIndexHtml: {
+          order: 'pre',
+          handler(html: string): string {
+            if (process.env.NETLIFY === 'true') {
+              return html
+                .replace(/<!-- GH_PAGES_SEO_START -->[\s\S]*?<!-- GH_PAGES_SEO_END -->/g, '')
+                .replace(/\/\* GH_PAGES_SEO_CSS_START \*\/[\s\S]*?\/\* GH_PAGES_SEO_CSS_END \*\//g, '');
+            }
+            return html;
+          },
+        },
+      },
       // Copies src/assets into dist/ so root-relative URLs like
       // "/src/assets/images/..." (e.g. generate_image output) still resolve
       // in production builds. Do not remove.
