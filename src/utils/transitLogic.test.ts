@@ -12,11 +12,13 @@ import {
   findRoutesNearRoadPoint,
   formatGpsAge,
   formatTime12Hour,
+  formatTitleCase,
   getInitialDataset,
   getStopRoutesAndBuses,
   isBusSleeping,
   parseGtfsRealtimePayload,
   parseLiveTripDetail,
+  replaceCuttackWithKataka,
   searchStops
 } from './transitLogic';
 import { CUSTOM_BUS_STOPS, mergeCustomBusStops } from './customStops';
@@ -227,4 +229,32 @@ test('mergeCustomBusStops includes Mahuli (20.833643, 85.530248) matching Kusuma
   assert.equal(mahuliData.routesServingStop.length, 1);
   assert.equal(mahuliData.busesServingStop.length, 1);
 });
+
+test('replaceCuttackWithKataka replaces Cuttack everywhere while allowing users to search either Cuttack or Kataka', () => {
+  assert.equal(replaceCuttackWithKataka('Cuttack Badambadi'), 'Kataka Badambadi');
+  assert.equal(replaceCuttackWithKataka('CUTTACK CNBT'), 'KATAKA CNBT');
+  assert.equal(replaceCuttackWithKataka('Bhubaneswar → Cuttack'), 'Bhubaneswar → Kataka');
+  assert.equal(formatTitleCase('CUTTACK BADAMBADI'), 'Kataka Badambadi');
+
+  const { stops, routes, buses } = getInitialDataset();
+  // Seed UI items contain zero visible "Cuttack"
+  assert.equal(stops.some((s) => /cuttack/i.test(s.name) || /cuttack/i.test(s.district)), false);
+  assert.equal(routes.some((r) => /cuttack/i.test(r.name) || /cuttack/i.test(r.origin) || /cuttack/i.test(r.destination)), false);
+
+  // Searching "Cuttack" still finds "Kataka" stops, trips, and buses
+  const foundStopsByCuttack = searchStops(stops, 'Cuttack');
+  const foundStopsByKataka = searchStops(stops, 'Kataka');
+  assert.ok(foundStopsByCuttack.length > 0);
+  assert.deepEqual(
+    foundStopsByCuttack.map((s) => s.id),
+    foundStopsByKataka.map((s) => s.id)
+  );
+
+  const foundBusesByCuttack = filterLiveBuses(buses, { fleet: 'ALL', query: 'Cuttack', onTripOnly: false });
+  assert.ok(foundBusesByCuttack.length > 0);
+
+  const foundJourneys = findDirectJourneys(routes, buses, 'Brahmapur', 'Cuttack', 'ALL');
+  assert.ok(foundJourneys.length > 0);
+});
+
 

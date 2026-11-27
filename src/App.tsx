@@ -35,6 +35,7 @@ import {
   isBusSleeping,
   parseGtfsRealtimePayload,
   parseLiveTripDetail,
+  replaceCuttackWithKataka,
   searchStops
 } from './utils/transitLogic';
 import {
@@ -80,13 +81,19 @@ function readInitialHistory(): HistoryEntry[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (item): item is HistoryEntry =>
-        item &&
-        typeof item.id === 'string' &&
-        typeof item.label === 'string' &&
-        (item.kind === 'bus' || item.kind === 'route' || item.kind === 'stop')
-    );
+    return parsed
+      .filter(
+        (item): item is HistoryEntry =>
+          item &&
+          typeof item.id === 'string' &&
+          typeof item.label === 'string' &&
+          (item.kind === 'bus' || item.kind === 'route' || item.kind === 'stop')
+      )
+      .map((item) => ({
+        ...item,
+        label: replaceCuttackWithKataka(item.label),
+        sublabel: item.sublabel ? replaceCuttackWithKataka(item.sublabel) : undefined
+      }));
   } catch {
     return [];
   }

@@ -1,4 +1,9 @@
-import { calculateDistanceKm, classifyFleetCategory, formatTitleCase } from './transitLogic';
+import {
+  calculateDistanceKm,
+  classifyFleetCategory,
+  formatTitleCase,
+  replaceCuttackWithKataka
+} from './transitLogic';
 import { BusRoute, BusStop } from './transitTypes';
 import { CUSTOM_BUS_STOPS, mergeCustomBusStops } from './customStops';
 
@@ -350,7 +355,9 @@ function mapRawRoutesToBusRoutes(rawRoutes: any[]): BusRoute[] {
       origin: formatTitleCase(r.origin || first.stopName),
       destination: formatTitleCase(r.destination || last.stopName),
       fleet,
-      corridor: r.cityName ? `${r.cityName} City Transit` : 'Odisha Intercity Network',
+      corridor: r.cityName
+        ? `${replaceCuttackWithKataka(String(r.cityName))} City Transit`
+        : 'Odisha Intercity Network',
       distanceKm: distKm,
       durationLabel: `${Math.max(20, Math.round(distKm * 1.4))}m`,
       departures: r.departure ? [r.departure] : [],

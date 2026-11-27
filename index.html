@@ -10,7 +10,7 @@
     />
     <meta
       name="keywords"
-      content="Odisha Bus, OSRTC live bus tracking, Shree Jagannath Express, Mukhyamantri Bus Seva, Ama Bus, Ama Bus AC, Mo Bus, Bhubaneswar bus timing, Cuttack bus tracker, Dhenkanal bus route, Puri bus live status, Odisha public transport map"
+      content="Odisha Bus, OSRTC live bus tracking, Shree Jagannath Express, Mukhyamantri Bus Seva, Ama Bus, Ama Bus AC, Mo Bus, Bhubaneswar bus timing, Kataka bus tracker, Cuttack bus tracker, Dhenkanal bus route, Puri bus live status, Odisha public transport map"
     />
     <meta name="robots" content="index, follow" />
     <meta name="theme-color" content="#ea580c" />
@@ -88,6 +88,11 @@
       .gh-seo-banner { margin-top: 36px; background: #020617; color: #ffffff; border-radius: 16px; padding: 28px 32px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 20px; }
       .gh-seo-banner h3 { color: #ffffff; font-size: 21px; margin-bottom: 6px; }
       .gh-seo-banner p { color: #cbd5e1; font-size: 14px; margin: 0; max-width: 560px; }
+      .gh-seo-embed-card { background: #ffffff; border: 1px solid #cbd5e1; border-radius: 18px; overflow: hidden; box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08); }
+      .gh-seo-embed-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; font-size: 13px; }
+      .gh-seo-embed-title { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; color: #0f172a; }
+      .gh-seo-live-dot { width: 8px; height: 8px; border-radius: 999px; background: #16a34a; display: inline-block; }
+      .gh-seo-embed-frame { display: block; width: 100%; height: 660px; border: 0; background: #f1f5f9; }
       .gh-seo-footer { background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 36px 0; font-size: 13px; color: #64748b; }
       .gh-seo-footer-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 20px; }
       .gh-seo-app { display: inline-flex; align-items: center; gap: 10px; background: #ffffff; border: 1px solid #e2e8f0; padding: 8px 14px; border-radius: 12px; font-weight: 600; color: #0f172a; font-size: 13px; }
@@ -97,6 +102,7 @@
         .gh-seo-hero-grid, .gh-seo-bento { grid-template-columns: 1fr; }
         .gh-seo-span2 { grid-column: span 1; }
         .gh-seo-stats { grid-template-columns: repeat(2, 1fr); }
+        .gh-seo-embed-frame { height: 520px; }
       }
     </style>
   </head>
@@ -111,9 +117,9 @@
               <span>Odisha Bus</span>
             </a>
             <nav class="gh-seo-links" aria-label="Guide sections">
+              <a href="#live-map">Live Map</a>
               <a href="#features">Features</a>
               <a href="#fleets">Bus Fleets</a>
-              <a href="#how-it-works">How It Works</a>
               <a href="#routes">Popular Routes</a>
               <a href="#faq">FAQ</a>
             </nav>
@@ -170,6 +176,35 @@
             </div>
           </section>
 
+          <section id="live-map" class="gh-seo-section" style="padding-bottom: 12px;">
+            <div class="gh-seo-container">
+              <div class="gh-seo-kicker">Interactive Live Map Preview</div>
+              <h2 class="gh-seo-h2">Track Live Odisha Buses Right Here</h2>
+              <p class="gh-seo-sub">
+                Explore live GPS bus locations, search stations across Odisha, or tap any road below — or open full screen for the fastest mobile experience.
+              </p>
+              <div class="gh-seo-embed-card">
+                <div class="gh-seo-embed-bar">
+                  <span class="gh-seo-embed-title">
+                    <span class="gh-seo-live-dot" aria-hidden="true"></span>
+                    <span>Odisha Bus Live Map · odishabus.netlify.app</span>
+                  </span>
+                  <a href="https://odishabus.netlify.app/" target="_blank" rel="noopener noreferrer" style="color: #ea580c; font-weight: 600;">
+                    Open Full Screen ↗
+                  </a>
+                </div>
+                <iframe
+                  src="https://odishabus.netlify.app/"
+                  title="Odisha Bus Live Interactive GPS Map"
+                  class="gh-seo-embed-frame"
+                  loading="lazy"
+                  allow="geolocation"
+                  allowfullscreen
+                ></iframe>
+              </div>
+            </div>
+          </section>
+
           <section id="features" class="gh-seo-section">
             <div class="gh-seo-container">
               <div class="gh-seo-kicker">Core Capabilities</div>
@@ -186,7 +221,7 @@
                 </article>
                 <article class="gh-seo-box">
                   <h3>03. Complete Odisha Station &amp; Stop Search</h3>
-                  <p>Search thousands of bus stands and village stops — including Bhubaneswar BSABT, Cuttack Badambadi, Puri, Sambalpur, Dhenkanal, Kamakhyanagar, Kusumajodi, and Mahuli.</p>
+                  <p>Search thousands of bus stands and village stops — including Bhubaneswar BSABT, Kataka Badambadi, Puri, Sambalpur, Dhenkanal, Kamakhyanagar, Kusumajodi, and Mahuli.</p>
                 </article>
                 <article class="gh-seo-box gh-seo-span2">
                   <h3>04. Real GPS My Location, Viewport-Synced Explorer &amp; Resting Indicators</h3>
@@ -216,15 +251,15 @@
                 </article>
                 <article class="gh-seo-box-alt">
                   <h3>Ama Bus</h3>
-                  <p>High-frequency CRUT urban city bus service across Bhubaneswar, Cuttack, Puri, Rourkela, Sambalpur, and Berhampur.</p>
+                  <p>High-frequency CRUT urban city bus service across Bhubaneswar, Kataka, Puri, Rourkela, Sambalpur, and Berhampur.</p>
                 </article>
                 <article class="gh-seo-box-alt">
                   <h3>Ama Bus AC</h3>
-                  <p>Air-conditioned city and electric coaches serving Bhubaneswar Airport, Master Canteen, KIIT, Nandankanan, Cuttack, and Puri corridors.</p>
+                  <p>Air-conditioned city and electric coaches serving Bhubaneswar Airport, Master Canteen, KIIT, Nandankanan, Kataka, and Puri corridors.</p>
                 </article>
                 <article class="gh-seo-box-alt">
                   <h3>Mo Bus</h3>
-                  <p>Capital region urban commuter routes linking Bhubaneswar, Cuttack, Khordha, Pipili, and Konark with transparent stop lists.</p>
+                  <p>Capital region urban commuter routes linking Bhubaneswar, Kataka, Khordha, Pipili, and Konark with transparent stop lists.</p>
                 </article>
               </div>
             </div>
@@ -280,7 +315,7 @@
                         <td><a href="https://odishabus.netlify.app/" style="color:#ea580c;font-weight:600;">Track Live →</a></td>
                       </tr>
                       <tr>
-                        <td><strong>Bhubaneswar → Cuttack (Badambadi)</strong></td>
+                        <td><strong>Bhubaneswar → Kataka (Badambadi)</strong></td>
                         <td>Ama Bus · Ama Bus AC · Mo Bus · OSRTC</td>
                         <td>Vani Vihar, Rasulgarh, Pahala, Link Road, Badambadi</td>
                         <td><a href="https://odishabus.netlify.app/" style="color:#ea580c;font-weight:600;">Track Live →</a></td>
@@ -294,7 +329,7 @@
                       <tr>
                         <td><strong>Bhubaneswar → Sambalpur</strong></td>
                         <td>Shree Jagannath Express · OSRTC</td>
-                        <td>Cuttack, Dhenkanal, Angul, Boinda, Rairakhol, Ainthapali</td>
+                        <td>Kataka, Dhenkanal, Angul, Boinda, Rairakhol, Ainthapali</td>
                         <td><a href="https://odishabus.netlify.app/" style="color:#ea580c;font-weight:600;">Track Live →</a></td>
                       </tr>
                       <tr>

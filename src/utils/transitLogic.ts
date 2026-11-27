@@ -65,9 +65,22 @@ export function classifyFleetCategory(
   return 'Standby';
 }
 
+/**
+ * Replaces any occurrence of "Cuttack" with "Kataka" while preserving casing
+ * (CUTTACK -> KATAKA, cuttack -> kataka, Cuttack -> Kataka).
+ */
+export function replaceCuttackWithKataka(text: string): string {
+  if (!text) return '';
+  return text.replace(/cuttack/gi, (match) => {
+    if (match === match.toUpperCase()) return 'KATAKA';
+    if (match === match.toLowerCase()) return 'kataka';
+    return 'Kataka';
+  });
+}
+
 export function formatTitleCase(str: string): string {
   if (!str) return '';
-  return str
+  const formatted = str
     .trim()
     .split(/\s+/)
     .map((word) => {
@@ -83,6 +96,7 @@ export function formatTitleCase(str: string): string {
       return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
     })
     .join(' ');
+  return replaceCuttackWithKataka(formatted);
 }
 
 export function calculateExactDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -179,7 +193,7 @@ export function filterLiveBuses(
     onTripOnly: boolean;
   }
 ): LiveBus[] {
-  const q = options.query.trim().toLowerCase();
+  const q = options.query.trim().toLowerCase().replace(/cuttack/g, 'kataka');
   const qNorm = q.replace(/[^a-z0-9]/g, '');
 
   return buses.filter((bus) => {
@@ -257,7 +271,7 @@ export function filterRoutes(
     query: string;
   }
 ): BusRoute[] {
-  const q = options.query.trim().toLowerCase();
+  const q = options.query.trim().toLowerCase().replace(/cuttack/g, 'kataka');
   return routes.filter((route) => {
     if (options.fleet !== 'ALL' && route.fleet !== options.fleet) {
       return false;
@@ -270,7 +284,7 @@ export function filterRoutes(
 }
 
 export function searchStops(stops: BusStop[], query: string): BusStop[] {
-  const q = query.trim().toLowerCase();
+  const q = query.trim().toLowerCase().replace(/cuttack/g, 'kataka');
   if (!q) return stops;
   const matched = stops.filter((stop) => {
     const hay = `${stop.name} ${stop.district} ${stop.code || ''}`.toLowerCase();
@@ -287,7 +301,7 @@ export function searchStops(stops: BusStop[], query: string): BusStop[] {
 }
 
 function normalizeTripPlannerStopQuery(raw: string): string {
-  const q = raw.trim().toLowerCase();
+  const q = raw.trim().toLowerCase().replace(/cuttack/g, 'kataka');
   if (q === 'mahuli') return 'kusumajodi';
   return q;
 }
@@ -706,7 +720,7 @@ export function parseGtfsRealtimePayload(
       speedSource,
       gpsAgeLabel,
       timestamp,
-      depot: rlink?.[2] || lv?.depot || 'Odisha Transit',
+      depot: replaceCuttackWithKataka(rlink?.[2] || lv?.depot || 'Odisha Transit'),
       isOnTrip,
       lastStopName: lastStop?.stopName || origin || 'Depot',
       nextStopName: nextStop?.stopName || destination || 'Standby',

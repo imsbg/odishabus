@@ -33,7 +33,7 @@ export const FLEET_CATEGORIES: {
     shortLabel: 'Ama Bus',
     operator: 'CRUT Urban Transit Network',
     accentHex: '#1f6fb8',
-    description: 'Regular city midibuses operating across Bhubaneswar-Cuttack-Puri, Sambalpur, Berhampur, Rourkela, and Keonjhar.'
+    description: 'Regular city midibuses operating across Bhubaneswar-Kataka-Puri, Sambalpur, Berhampur, Rourkela, and Keonjhar.'
   },
   {
     id: 'Ama Bus AC',
@@ -47,7 +47,7 @@ export const FLEET_CATEGORIES: {
     shortLabel: 'Mo Bus',
     operator: 'Capital Region Urban Transport (CRUT)',
     accentHex: '#0d9488',
-    description: 'Signature Capital Region smart transit fleet connecting Biju Patnaik Airport, Master Canteen, Nandankanan, Cuttack, and Puri.'
+    description: 'Signature Capital Region smart transit fleet connecting Biju Patnaik Airport, Master Canteen, Nandankanan, Kataka, and Puri.'
   }
 ];
 
@@ -75,8 +75,8 @@ export const SEED_STOPS: BusStop[] = [
   { id: 'nsakhigopal1995285819', name: 'Sakhigopal Temple Chhak', district: 'Puri', lat: 19.95220, lon: 85.81950, code: 'SKG' },
   { id: 'npuribusstand1980785826', name: 'Puri Grand Road Bus Terminal', district: 'Puri', lat: 19.80750, lon: 85.82690, isTerminal: true, code: 'PURI' },
   { id: 'nkonark1988786094', name: 'Konark Sun Temple Stand', district: 'Puri', lat: 19.88760, lon: 86.09450, isTerminal: true, code: 'KNK' },
-  { id: 'nkataka2045785880', name: 'Kataka (Cuttack CNBT Netaji Terminal)', district: 'Cuttack', lat: 20.45730, lon: 85.88040, isTerminal: true, code: 'CNBT' },
-  { id: 'nscbmedical2047285888', name: 'SCB Medical College Cuttack', district: 'Cuttack', lat: 20.47210, lon: 85.88810, code: 'SCB' },
+  { id: 'nkataka2045785880', name: 'Kataka CNBT Netaji Terminal', district: 'Kataka', lat: 20.45730, lon: 85.88040, isTerminal: true, code: 'CNBT' },
+  { id: 'nscbmedical2047285888', name: 'SCB Medical College Kataka', district: 'Kataka', lat: 20.47210, lon: 85.88810, code: 'SCB' },
   { id: 'nkhordhabypass2018685645', name: 'Khordha Bypass', district: 'Khordha', lat: 20.18620, lon: 85.64510, code: 'KHD' },
   { id: 'nbalugaonbypass1975885192', name: 'Balugaon Chilika Bypass', district: 'Khordha', lat: 19.75810, lon: 85.19240, code: 'BLG' },
   { id: 'nrambha1950085086', name: 'Rambha Railway Station', district: 'Ganjam', lat: 19.49980, lon: 85.08614, code: 'RMB' },
@@ -156,7 +156,7 @@ export const SEED_ROUTES: BusRoute[] = [
       { stopId: 'npuribusstand1980785826', stopName: 'Puri Grand Road Bus Terminal', lat: 19.80750, lon: 85.82690, scheduledTime: '13:15', estimatedTime: '13:15', status: 'passed', sequence: 1 },
       { stopId: 'npipili2011385832', stopName: 'Pipili Toll Plaza', lat: 20.11340, lon: 85.83210, scheduledTime: '14:00', estimatedTime: '14:02', status: 'passed', sequence: 2 },
       { stopId: 'nbhubaneswarbsabt2027485791', stopName: 'Bhubaneswar [BSABT] Baramunda', lat: 20.27410, lon: 85.79120, scheduledTime: '14:35', estimatedTime: '14:38', status: 'passed', sequence: 3 },
-      { stopId: 'nkataka2045785880', stopName: 'Kataka (Cuttack CNBT Netaji Terminal)', lat: 20.45730, lon: 85.88040, scheduledTime: '15:15', estimatedTime: '15:18', status: 'current', sequence: 4 },
+      { stopId: 'nkataka2045785880', stopName: 'Kataka CNBT Netaji Terminal', lat: 20.45730, lon: 85.88040, scheduledTime: '15:15', estimatedTime: '15:18', status: 'current', sequence: 4 },
       { stopId: 'nghatagaon2139185900', stopName: 'Ghatagaon Maa Tarini Chhak', lat: 21.39100, lon: 85.90000, scheduledTime: '17:30', estimatedTime: '17:34', status: 'upcoming', sequence: 5 },
       { stopId: 'nkendujhar2163685608', stopName: 'Kendujhar (Keonjhar Bus Stand)', lat: 21.63600, lon: 85.60800, scheduledTime: '18:30', estimatedTime: '18:30', status: 'upcoming', sequence: 6 }
     ],
@@ -174,7 +174,7 @@ export const SEED_ROUTES: BusRoute[] = [
     routeNumber: 'CTC0005D',
     name: 'Brahmapur → Bhubaneswar [BSABT] → Kataka',
     origin: 'Brahmapur (Berhampur Haldiapadar)',
-    destination: 'Kataka (Cuttack CNBT Netaji Terminal)',
+    destination: 'Kataka CNBT Netaji Terminal',
     fleet: 'OSRTC',
     corridor: 'NH-16 Coastal Express Highway',
     distanceKm: 196,
@@ -187,7 +187,7 @@ export const SEED_ROUTES: BusRoute[] = [
       { stopId: 'nbalugaonbypass1975885192', stopName: 'Balugaon Chilika Bypass', lat: 19.75810, lon: 85.19240, scheduledTime: '15:25', estimatedTime: '15:27', status: 'current', sequence: 4 },
       { stopId: 'nkhordhabypass2018685645', stopName: 'Khordha Bypass', lat: 20.18620, lon: 85.64510, scheduledTime: '16:35', estimatedTime: '16:38', status: 'upcoming', sequence: 5 },
       { stopId: 'nbhubaneswarbsabt2027485791', stopName: 'Bhubaneswar [BSABT] Baramunda', lat: 20.27410, lon: 85.79120, scheduledTime: '17:05', estimatedTime: '17:08', status: 'upcoming', sequence: 6 },
-      { stopId: 'nkataka2045785880', stopName: 'Kataka (Cuttack CNBT Netaji Terminal)', lat: 20.45730, lon: 85.88040, scheduledTime: '17:40', estimatedTime: '17:42', status: 'upcoming', sequence: 7 }
+      { stopId: 'nkataka2045785880', stopName: 'Kataka CNBT Netaji Terminal', lat: 20.45730, lon: 85.88040, scheduledTime: '17:40', estimatedTime: '17:42', status: 'upcoming', sequence: 7 }
     ],
     path: [
       [19.26983, 84.77731],
@@ -255,7 +255,7 @@ export const SEED_ROUTES: BusRoute[] = [
     id: 'AMAAC_18A',
     routeNumber: '18A-AC',
     name: 'Kataka CNBT → Rasulgarh → Master Canteen → AIIMS Bhubaneswar',
-    origin: 'Kataka (Cuttack CNBT Netaji Terminal)',
+    origin: 'Kataka CNBT Netaji Terminal',
     destination: 'AIIMS Bhubaneswar',
     fleet: 'Ama Bus AC',
     corridor: 'Twin City AC Metro Spine',
@@ -263,8 +263,8 @@ export const SEED_ROUTES: BusRoute[] = [
     durationLabel: '1h 10m',
     departures: ['06:30', '07:30', '09:00', '11:30', '14:30', '16:30', '18:30', '20:30'],
     stops: [
-      { stopId: 'nscbmedical2047285888', stopName: 'SCB Medical College Cuttack', lat: 20.47210, lon: 85.88810, scheduledTime: '14:30', estimatedTime: '14:30', status: 'passed', sequence: 1 },
-      { stopId: 'nkataka2045785880', stopName: 'Kataka (Cuttack CNBT Netaji Terminal)', lat: 20.45730, lon: 85.88040, scheduledTime: '14:40', estimatedTime: '14:40', status: 'passed', sequence: 2 },
+      { stopId: 'nscbmedical2047285888', stopName: 'SCB Medical College Kataka', lat: 20.47210, lon: 85.88810, scheduledTime: '14:30', estimatedTime: '14:30', status: 'passed', sequence: 1 },
+      { stopId: 'nkataka2045785880', stopName: 'Kataka CNBT Netaji Terminal', lat: 20.45730, lon: 85.88040, scheduledTime: '14:40', estimatedTime: '14:40', status: 'passed', sequence: 2 },
       { stopId: 'nrasulgarh2029185862', stopName: 'Rasulgarh Square', lat: 20.29120, lon: 85.86210, scheduledTime: '15:08', estimatedTime: '15:10', status: 'current', sequence: 3 },
       { stopId: 'nmastercanteen2026685843', stopName: 'Master Canteen Terminal', lat: 20.26650, lon: 85.84340, scheduledTime: '15:20', estimatedTime: '15:22', status: 'upcoming', sequence: 4 },
       { stopId: 'nbhubaneswarbsabt2027485791', stopName: 'Bhubaneswar [BSABT] Baramunda', lat: 20.27410, lon: 85.79120, scheduledTime: '15:30', estimatedTime: '15:32', status: 'upcoming', sequence: 5 },
@@ -388,7 +388,7 @@ export const SEED_LIVE_BUSES: LiveBus[] = [
     routeNumber: 'CTC0005D',
     routeName: 'Brahmapur → Bhubaneswar [BSABT] → Kataka',
     origin: 'Brahmapur (Berhampur Haldiapadar)',
-    destination: 'Kataka (Cuttack CNBT Netaji Terminal)',
+    destination: 'Kataka CNBT Netaji Terminal',
     lat: 19.75810,
     lon: 85.19240,
     bearing: 42,
@@ -453,7 +453,7 @@ export const SEED_LIVE_BUSES: LiveBus[] = [
     routeId: 'AMAAC_18A',
     routeNumber: '18A-AC',
     routeName: 'Kataka CNBT → Rasulgarh → Master Canteen → AIIMS Bhubaneswar',
-    origin: 'Kataka (Cuttack CNBT Netaji Terminal)',
+    origin: 'Kataka CNBT Netaji Terminal',
     destination: 'AIIMS Bhubaneswar',
     lat: 20.29120,
     lon: 85.86210,
@@ -462,7 +462,7 @@ export const SEED_LIVE_BUSES: LiveBus[] = [
     timestamp: Math.floor(Date.now() / 1000) - 10,
     depot: 'Patia EV & AC Depot',
     isOnTrip: true,
-    lastStopName: 'Kataka (Cuttack CNBT Netaji Terminal)',
+    lastStopName: 'Kataka CNBT Netaji Terminal',
     nextStopName: 'Master Canteen Terminal',
     nextStopEta: '15:22',
     tripStops: SEED_ROUTES[5].stops,

@@ -260,6 +260,27 @@ function buildCustomOdishaStyle(baseStyle: any, isDark: boolean): maplibregl.Sty
       }
     }
 
+    // Render "Kataka" instead of "Cuttack" on MapLibre base map place/city labels too
+    if (
+      type === 'symbol' &&
+      layout['text-field'] &&
+      (id.startsWith('label_city') || id === 'label_town' || id === 'label_village' || id === 'label_other')
+    ) {
+      const fallbackField = Array.isArray(layout['text-field'])
+        ? layout['text-field']
+        : ['coalesce', ['get', 'name:en'], ['get', 'name:latin'], ['get', 'name']];
+      layout['text-field'] = [
+        'case',
+        [
+          '==',
+          ['downcase', ['coalesce', ['get', 'name:en'], ['get', 'name:latin'], ['get', 'name'], '']],
+          'cuttack'
+        ],
+        'Kataka',
+        fallbackField
+      ];
+    }
+
     return {
       ...layer,
       paint,

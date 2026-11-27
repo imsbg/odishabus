@@ -52,7 +52,7 @@ const FLEET_GUIDE: FleetGuideItem[] = [
   {
     fleet: 'Ama Bus',
     shortTag: 'CRUT Urban City Service',
-    coverage: 'Bhubaneswar · Cuttack · Puri · Rourkela · Sambalpur · Berhampur',
+    coverage: 'Bhubaneswar · Kataka · Puri · Rourkela · Sambalpur · Berhampur',
     description:
       'High-frequency urban city buses operated by CRUT across Odisha’s metropolitan regions, linking railway stations, airports, universities, and market hubs.'
   },
@@ -61,14 +61,14 @@ const FLEET_GUIDE: FleetGuideItem[] = [
     shortTag: 'Air-Conditioned Electric & City Coaches',
     coverage: 'Bhubaneswar Airport · Nandankanan · KIIT · Master Canteen · Puri',
     description:
-      'Cool, quiet air-conditioned city coaches and electric buses serving busy urban corridors and tourist links between Bhubaneswar, Cuttack, and Puri.'
+      'Cool, quiet air-conditioned city coaches and electric buses serving busy urban corridors and tourist links between Bhubaneswar, Kataka, and Puri.'
   },
   {
     fleet: 'Mo Bus',
     shortTag: 'Capital Region Urban Heritage Fleet',
-    coverage: 'Capital Region · Khordha · Pipili · Konark · Cuttack Ring',
+    coverage: 'Capital Region · Khordha · Pipili · Konark · Kataka Ring',
     description:
-      'Everyday commuter routes across the Bhubaneswar–Cuttack–Puri urban belt with transparent stop lists and real-time route maps.'
+      'Everyday commuter routes across the Bhubaneswar–Kataka–Puri urban belt with transparent stop lists and real-time route maps.'
   }
 ];
 
@@ -80,7 +80,7 @@ const POPULAR_CORRIDORS = [
     frequency: 'Every 15–20 min'
   },
   {
-    corridor: 'Bhubaneswar → Cuttack (Badambadi)',
+    corridor: 'Bhubaneswar → Kataka (Badambadi)',
     fleets: 'Ama Bus · Ama Bus AC · Mo Bus · OSRTC',
     keyStops: 'Vani Vihar, Rasulgarh, Pahala, Phulnakhara, Link Road, Badambadi',
     frequency: 'Every 10–15 min'
@@ -88,13 +88,13 @@ const POPULAR_CORRIDORS = [
   {
     corridor: 'Kamakhyanagar → Mahuli → Dhenkanal → Bhubaneswar',
     fleets: 'Mukhyamantri Bus Seva · OSRTC',
-    keyStops: 'Kamakhyanagar Dkl, Aluajharana, Mahuli, Kusumajodi, Dhenkanal, Cuttack',
+    keyStops: 'Kamakhyanagar Dkl, Aluajharana, Mahuli, Kusumajodi, Dhenkanal, Kataka',
     frequency: 'Regular daily services'
   },
   {
     corridor: 'Bhubaneswar → Sambalpur',
     fleets: 'Shree Jagannath Express · OSRTC',
-    keyStops: 'Cuttack, Dhenkanal, Angul, Boinda, Rairakhol, Ainthapali',
+    keyStops: 'Kataka, Dhenkanal, Angul, Boinda, Rairakhol, Ainthapali',
     frequency: 'Hourly express & AC'
   },
   {
@@ -165,6 +165,12 @@ export const OdishaSeoBlogPage: React.FC<OdishaSeoBlogPageProps> = ({
             className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600"
           >
             <a
+              href="#live-map"
+              className="hover:text-slate-950 hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0"
+            >
+              Live Map
+            </a>
+            <a
               href="#features"
               className="hover:text-slate-950 hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0"
             >
@@ -175,12 +181,6 @@ export const OdishaSeoBlogPage: React.FC<OdishaSeoBlogPageProps> = ({
               className="hover:text-slate-950 hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0"
             >
               Bus Fleets
-            </a>
-            <a
-              href="#how-it-works"
-              className="hover:text-slate-950 hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0"
-            >
-              How It Works
             </a>
             <a
               href="#routes"
@@ -316,6 +316,58 @@ export const OdishaSeoBlogPage: React.FC<OdishaSeoBlogPageProps> = ({
           </div>
         </section>
 
+        {/* INTERACTIVE LIVE MAP IFRAME EMBED */}
+        <section id="live-map" className="max-w-6xl mx-auto px-4 sm:px-6 pt-12 lg:pt-16 pb-2">
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
+            <div className="max-w-2xl space-y-2">
+              <div className="text-xs font-semibold text-orange-600">
+                Interactive Live Map Preview
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-950 font-display text-balance">
+                Track Live Odisha Buses Right Here
+              </h2>
+              <p className="text-sm sm:text-base text-slate-600 leading-relaxed">
+                Explore real-time GPS positions, search Odisha stations, or click any road right
+                inside this preview — or open full screen for the fastest mobile view.
+              </p>
+            </div>
+            <a
+              href={LIVE_APP_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-sm font-semibold text-orange-600 hover:text-orange-500 whitespace-nowrap shrink-0"
+            >
+              <span>Open Full Screen</span>
+              <ExternalLink className="w-4 h-4" />
+            </a>
+          </div>
+
+          <div className="rounded-2xl overflow-hidden border border-slate-300/80 bg-white shadow-lg shadow-slate-900/5">
+            <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-xs">
+              <span className="inline-flex items-center gap-2 font-semibold text-slate-800">
+                <span className="w-2 h-2 rounded-full bg-emerald-600" aria-hidden="true" />
+                <span>Odisha Bus Live Map · odishabus.netlify.app</span>
+              </span>
+              <a
+                href={LIVE_APP_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold text-orange-600 hover:underline underline-offset-4 whitespace-nowrap"
+              >
+                Full Screen ↗
+              </a>
+            </div>
+            <iframe
+              src={LIVE_APP_URL}
+              title="Odisha Bus Live Interactive GPS Map"
+              loading="lazy"
+              allow="geolocation"
+              allowFullScreen
+              className="block w-full h-[520px] sm:h-[640px] lg:h-[680px] border-0 bg-slate-100"
+            />
+          </div>
+        </section>
+
         {/* ASYMMETRIC FEATURE BENTO (Editorial Numbered Capabilities) */}
         <section id="features" className="max-w-6xl mx-auto px-4 sm:px-6 py-14 lg:py-20">
           <div className="max-w-2xl space-y-2.5 mb-10">
@@ -371,7 +423,7 @@ export const OdishaSeoBlogPage: React.FC<OdishaSeoBlogPageProps> = ({
               </div>
               <p className="text-sm text-slate-600 leading-relaxed">
                 Search thousands of major terminals and village stops — from Bhubaneswar BSABT,
-                Cuttack Badambadi, and Puri Stand to Dhenkanal, Kamakhyanagar, and local stops like{' '}
+                Kataka Badambadi, and Puri Stand to Dhenkanal, Kamakhyanagar, and local stops like{' '}
                 <strong className="font-semibold text-slate-900">Mahuli</strong> — to view passing
                 routes and nearby live coaches.
               </p>

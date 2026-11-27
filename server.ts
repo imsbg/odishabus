@@ -103,6 +103,15 @@ function approxKm(a: [number, number], b: [number, number]): number {
   return Math.hypot((a[1] - b[1]) * 106, (a[0] - b[0]) * 111);
 }
 
+function replaceCuttackWithKataka(text: string): string {
+  if (!text) return '';
+  return text.replace(/cuttack/gi, (match) => {
+    if (match === match.toUpperCase()) return 'KATAKA';
+    if (match === match.toLowerCase()) return 'kataka';
+    return 'Kataka';
+  });
+}
+
 function pointToSegmentKm(
   pLat: number,
   pLon: number,
@@ -525,10 +534,10 @@ async function createServer() {
         if (!Array.isArray(v) || !Array.isArray(v[6]) || v[6].length < 2) continue;
         const routeNumber = String(v[0] || '').trim();
         const typeName = net.types[Number(v[1])] || 'OSRTC';
-        const cityName = serviceKey.startsWith('k') ? String(v[2] || '') : '';
+        const cityName = serviceKey.startsWith('k') ? replaceCuttackWithKataka(String(v[2] || '')) : '';
         const dep = String(v[3] || '');
-        const origin = String(v[4] || '');
-        const destination = String(v[5] || '');
+        const origin = replaceCuttackWithKataka(String(v[4] || ''));
+        const destination = replaceCuttackWithKataka(String(v[5] || ''));
         const dedupeKey = `${cityName}|${routeNumber}|${origin}|${destination}`;
         if (seen.has(dedupeKey)) continue;
         seen.add(dedupeKey);
@@ -541,7 +550,7 @@ async function createServer() {
             if (!st) return null;
             return {
               stopId: sid,
-              stopName: st[0],
+              stopName: replaceCuttackWithKataka(st[0]),
               lat: st[1],
               lon: st[2],
               scheduledTime: times[idx] || '--:--',
@@ -575,7 +584,7 @@ async function createServer() {
         const d = approxKm([lat, lon], [tuple[1], tuple[2]]);
         if (d < nearestDist) {
           nearestDist = d;
-          nearestStopName = tuple[0];
+          nearestStopName = replaceCuttackWithKataka(tuple[0]);
         }
       }
 
@@ -611,7 +620,7 @@ async function createServer() {
         if (lat < 17.4 || lat > 22.9 || lon < 81.1 || lon > 87.7) continue;
         stopsList.push({
           id,
-          name,
+          name: replaceCuttackWithKataka(name),
           lat,
           lon,
           isCity: id.startsWith('k'),
@@ -643,10 +652,10 @@ async function createServer() {
         const routeNumber = String(v[0] || '').trim();
         const typeName = net.types[Number(v[1])] || 'OSRTC';
         const isCity = serviceKey.startsWith('k');
-        const cityName = isCity ? String(v[2] || '') : '';
+        const cityName = isCity ? replaceCuttackWithKataka(String(v[2] || '')) : '';
         const dep = String(v[3] || '');
-        const from = String(v[4] || '');
-        const to = String(v[5] || '');
+        const from = replaceCuttackWithKataka(String(v[4] || ''));
+        const to = replaceCuttackWithKataka(String(v[5] || ''));
         const dedupeKey = `${cityName}|${routeNumber}|${from}|${to}`;
         if (seenRoutes.has(dedupeKey)) continue;
         seenRoutes.add(dedupeKey);
@@ -659,7 +668,7 @@ async function createServer() {
             if (!st) return null;
             return {
               stopId: sid,
-              stopName: st[0],
+              stopName: replaceCuttackWithKataka(st[0]),
               lat: st[1],
               lon: st[2],
               scheduledTime: times[idx] || '--:--',
