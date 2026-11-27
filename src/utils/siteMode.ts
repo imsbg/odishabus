@@ -22,7 +22,14 @@ export function resolveSiteMode(loc: LocationLike): SiteMode {
   if (viewParam === 'guide' || viewParam === 'seo' || viewParam === 'blog') {
     return 'seo';
   }
-  if (viewParam === 'app' || viewParam === 'map' || params.has('bus')) {
+  if (
+    viewParam === 'app' ||
+    viewParam === 'map' ||
+    params.has('bus') ||
+    params.has('route') ||
+    params.has('stop') ||
+    (params.has('from') && params.has('to'))
+  ) {
     return 'app';
   }
 

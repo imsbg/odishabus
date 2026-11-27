@@ -48,11 +48,16 @@
           var params = new URLSearchParams(window.location.search || '');
           var view = (params.get('view') || params.get('mode') || '').toLowerCase().trim();
           var isSeoHost = host === 'imsbg.github.io' || host.endsWith('.github.io');
+          var isDeepLink =
+            params.has('bus') ||
+            params.has('route') ||
+            params.has('stop') ||
+            (params.has('from') && params.has('to'));
           var showSeo =
             view === 'guide' ||
             view === 'seo' ||
             view === 'blog' ||
-            (isSeoHost && view !== 'app' && view !== 'map' && !params.has('bus'));
+            (isSeoHost && view !== 'app' && view !== 'map' && !isDeepLink);
           if (!showSeo) {
             document.documentElement.classList.add('is-app-host');
           }
@@ -358,47 +363,59 @@
                     <thead>
                       <tr>
                         <th>Corridor</th>
-                        <th>Bus Services</th>
-                        <th>Major Stops</th>
+                        <th>Route &amp; Fleet</th>
+                        <th>Verified Stops</th>
                         <th>Live Map</th>
                       </tr>
                     </thead>
                     <tbody>
                       <tr>
-                        <td><strong>Bhubaneswar (BSABT) → Puri</strong></td>
-                        <td>Shree Jagannath Express · Ama Bus AC · OSRTC</td>
-                        <td>Master Canteen, Kalpana Square, Pipili, Malatipatpur, Puri</td>
-                        <td><a href="https://odishabus.netlify.app/" style="color:#ea580c;font-weight:600;">Track Live →</a></td>
+                        <td><strong>Bhubaneswar → Puri</strong></td>
+                        <td>Ama Bus (50) · OSRTC (MPT0011U)</td>
+                        <td>Bhubaneswar Railway Station, Raj Mahal Square, Dhauli Square, Uttara Square, Pipili Bypass, Satasankha, Sakhigopal, Malatipatpur, Puri Bus Stand</td>
+                        <td><a href="https://odishabus.netlify.app/?route=50&amp;from=Bhubaneswar&amp;to=Puri" style="color:#ea580c;font-weight:600;white-space:nowrap;">Track Live →</a></td>
                       </tr>
                       <tr>
                         <td><strong>Bhubaneswar → Kataka (Badambadi)</strong></td>
-                        <td>Ama Bus · Ama Bus AC · Mo Bus · OSRTC</td>
-                        <td>Vani Vihar, Rasulgarh, Pahala, Link Road, Badambadi</td>
-                        <td><a href="https://odishabus.netlify.app/" style="color:#ea580c;font-weight:600;">Track Live →</a></td>
+                        <td>Ama Bus (17 / 18S) · OSRTC Express</td>
+                        <td>Biju Patnaik Airport, AG Square, Vani Vihar, Rasulgarh Square, Pahal, Link Road, Badambadi Bus Stand, CNBT, Barabati Stadium</td>
+                        <td><a href="https://odishabus.netlify.app/?route=17&amp;from=Bhubaneswar&amp;to=Kataka" style="color:#ea580c;font-weight:600;white-space:nowrap;">Track Live →</a></td>
                       </tr>
                       <tr>
-                        <td><strong>Kamakhyanagar → Mahuli → Dhenkanal → Bhubaneswar</strong></td>
-                        <td>Mukhyamantri Bus Seva · OSRTC</td>
-                        <td>Kamakhyanagar Dkl, Aluajharana, Mahuli, Kusumajodi, Dhenkanal</td>
-                        <td><a href="https://odishabus.netlify.app/" style="color:#ea580c;font-weight:600;">Track Live →</a></td>
+                        <td><strong>Bhubaneswar → Dhenkanal → Kamakhyanagar → Kendujhar</strong></td>
+                        <td>OSRTC Express (BSR0038U / BSR0046D)</td>
+                        <td>Bhubaneswar [BSABT], Kataka, Jagatpur, Manguli, Choudwar, Khuntuni, Dhenkanal, Kamakhyanagar, Telkoi, Kendujhar</td>
+                        <td><a href="https://odishabus.netlify.app/?route=BSR0038U&amp;from=Bhubaneswar&amp;to=Kamakhyanagar" style="color:#ea580c;font-weight:600;white-space:nowrap;">Track Live →</a></td>
                       </tr>
                       <tr>
-                        <td><strong>Bhubaneswar → Sambalpur</strong></td>
-                        <td>Shree Jagannath Express · OSRTC</td>
-                        <td>Kataka, Dhenkanal, Angul, Boinda, Rairakhol, Ainthapali</td>
-                        <td><a href="https://odishabus.netlify.app/" style="color:#ea580c;font-weight:600;">Track Live →</a></td>
+                        <td><strong>Kamakhyanagar → Mahuli / Kusumajodi → Sogar</strong></td>
+                        <td>Mukhyamantri Bus Seva (KAM0001U)</td>
+                        <td>Kamakhyanagar Dkl, Mahulapal Chhaka, Mahuli, Kusumajodi, Anlabhata, Pandua Chhaka, Kamagara, Sogar</td>
+                        <td><a href="https://odishabus.netlify.app/?route=KAM0001U&amp;from=Kamakhyanagar&amp;to=Mahuli" style="color:#ea580c;font-weight:600;white-space:nowrap;">Track Live →</a></td>
                       </tr>
                       <tr>
-                        <td><strong>Bhubaneswar → Berhampur</strong></td>
-                        <td>Shree Jagannath Express · OSRTC</td>
-                        <td>Khordha, Balugaon, Rambha, Chhatrapur, Berhampur Stand</td>
-                        <td><a href="https://odishabus.netlify.app/" style="color:#ea580c;font-weight:600;">Track Live →</a></td>
+                        <td><strong>Kataka → Bhubaneswar → Brahmapur</strong></td>
+                        <td>OSRTC Express (CTC0001U / BRP0006D)</td>
+                        <td>Kataka, Bhubaneswar [BSABT], Khordha Bypass, Jankia, Chandpur, Balugaon Bypass, Keshpur, Rambha, Chatrapur, Brahmapur</td>
+                        <td><a href="https://odishabus.netlify.app/?route=CTC0001U&amp;from=Bhubaneswar&amp;to=Brahmapur" style="color:#ea580c;font-weight:600;white-space:nowrap;">Track Live →</a></td>
                       </tr>
                       <tr>
-                        <td><strong>Bhubaneswar → Rourkela</strong></td>
-                        <td>Shree Jagannath Express · OSRTC</td>
-                        <td>Angul, Talcher, Pallahara, Barkote, Rajgangpur, Rourkela</td>
-                        <td><a href="https://odishabus.netlify.app/" style="color:#ea580c;font-weight:600;">Track Live →</a></td>
+                        <td><strong>Bhubaneswar → Sambalpur → Jharsuguda</strong></td>
+                        <td>OSRTC Express (BSR0022U / BSR0023U)</td>
+                        <td>Bhubaneswar [BSABT], Khordha, Nayagada, Dasapalla, Boudh, Redhakhol, Jujumara, Sambalpur, Rengali, Jharsuguda</td>
+                        <td><a href="https://odishabus.netlify.app/?route=BSR0022U&amp;from=Bhubaneswar&amp;to=Sambalpur" style="color:#ea580c;font-weight:600;white-space:nowrap;">Track Live →</a></td>
+                      </tr>
+                      <tr>
+                        <td><strong>Bhubaneswar → Kamakhyanagar → Raurkela</strong></td>
+                        <td>OSRTC Express (BSR0054U)</td>
+                        <td>Bhubaneswar [BSABT], Kataka, Khuntuni, Dhenkanal, Kamakhyanagar, Pitiri, Khamar, Palalahada, Barkote, Rajamunda, Raurkela</td>
+                        <td><a href="https://odishabus.netlify.app/?route=BSR0054U&amp;from=Bhubaneswar&amp;to=Raurkela" style="color:#ea580c;font-weight:600;white-space:nowrap;">Track Live →</a></td>
+                      </tr>
+                      <tr>
+                        <td><strong>Puri → Bhubaneswar → Baleshwar → Baripada</strong></td>
+                        <td>Shree Jagannath Express (JE_0204U)</td>
+                        <td>Puri, Bhubaneswar [BSABT], Kataka, Panikoili, Bhadrak, Baleshwar, Baripada</td>
+                        <td><a href="https://odishabus.netlify.app/?route=JE_0204U&amp;from=Bhubaneswar&amp;to=Baleshwar" style="color:#ea580c;font-weight:600;white-space:nowrap;">Track Live →</a></td>
                       </tr>
                     </tbody>
                   </table>

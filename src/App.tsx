@@ -30,6 +30,7 @@ import {
   filterBusesByMapBounds,
   filterLiveBuses,
   filterRoutes,
+  findBestLiveBusOrRouteForDeepLink,
   findDirectJourneys,
   findRoutesNearRoadPoint,
   formatTime12Hour,
@@ -134,25 +135,35 @@ export default function App() {
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [isLoadingTrip, setIsLoadingTrip] = useState<boolean>(false);
 
-  const initialBusParam = useMemo(() => {
+  const initialUrlParams = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
-    return (params.get('bus') || '').toUpperCase().trim();
+    return {
+      bus: (params.get('bus') || '').toUpperCase().trim(),
+      route: (params.get('route') || '').toUpperCase().trim(),
+      stop: (params.get('stop') || '').trim(),
+      from: (params.get('from') || '').trim(),
+      to: (params.get('to') || '').trim()
+    };
   }, []);
 
-  // On normal load (no ?bus= URL param), show NO active track — only map + left bus details
+  // On normal load (no URL deep link), show NO active track — only map + left bus details
   const [selectedBus, setSelectedBus] = useState<LiveBus | null>(null);
   const [selectedRoute, setSelectedRoute] = useState<BusRoute | null>(null);
   const [selectedStop, setSelectedStop] = useState<BusStop | null>(null);
   const [selectedRoad, setSelectedRoad] = useState<RoadRoutesSelection | null>(null);
   const [focusCoords, setFocusCoords] = useState<{ lat: number; lon: number; zoom?: number } | null>(null);
 
-  // Trip planner state
-  const [plannerFrom, setPlannerFrom] = useState<string>('Kamakhyanagar');
-  const [plannerTo, setPlannerTo] = useState<string>('Gangijodi');
+  // Trip planner state (pre-populated if ?from=&to= deep link was clicked)
+  const [plannerFrom, setPlannerFrom] = useState<string>(() => initialUrlParams.from || 'Kamakhyanagar');
+  const [plannerTo, setPlannerTo] = useState<string>(() => initialUrlParams.to || 'Gangijodi');
 
   // Track which vehicle IDs have already been enriched with full live trip + roadPath
   const enrichedTripsRef = useRef<Map<string, LiveBus>>(new Map());
-  const requestedBusParamDoneRef = useRef<boolean>(!initialBusParam);
+  const requestedBusParamDoneRef = useRef<boolean>(!initialUrlParams.bus);
+  const requestedCorridorParamDoneRef = useRef<boolean>(
+    !(initialUrlParams.route || (initialUrlParams.from && initialUrlParams.to))
+  );
+  const requestedStopParamDoneRef = useRef<boolean>(!initialUrlParams.stop);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -338,6 +349,11 @@ export default function App() {
         label: `Route ${route.routeNumber}`,
         sublabel: route.origin
       });
+      const url = new URL(window.location.href);
+      url.searchParams.delete('bus');
+      url.searchParams.delete('stop');
+      url.searchParams.set('route', route.routeNumber);
+      window.history.replaceState({}, '', url.toString());
 
       // Fetch exact road-snapped polyline for this route (Express or Netlify proxy)
       const lookupKey = route.serviceKey || route.routeNumber;
@@ -373,6 +389,51 @@ export default function App() {
     },
     [recordHistory]
   );
+
+  // Auto-resolve ?route=&from=&to= deep links (e.g. "Track Live →" from GitHub Pages corridors table)
+  // Selects a live running bus on that route/corridor immediately if active, otherwise opens the full route track!
+  useEffect(() => {
+    if (requestedCorridorParamDoneRef.current) return;
+    if (buses.length === 0 && routes.length === 0) return;
+
+    const { bus: matchedBus, route: matchedRoute } = findBestLiveBusOrRouteForDeepLink(
+      buses,
+      routes,
+      {
+        routeCode: initialUrlParams.route,
+        from: initialUrlParams.from,
+        to: initialUrlParams.to
+      }
+    );
+
+    if (matchedBus) {
+      requestedCorridorParamDoneRef.current = true;
+      setSyncWithMap(false);
+      handleSelectBus(matchedBus, true);
+      return;
+    }
+
+    // Wait until both live buses and routes have finished loading before settling on route-only fallback
+    if (matchedRoute && !isInitialLoading) {
+      requestedCorridorParamDoneRef.current = true;
+      void handleSelectRoute(matchedRoute);
+    }
+  }, [buses, routes, isInitialLoading, initialUrlParams, handleSelectBus, handleSelectRoute]);
+
+  // Auto-resolve ?stop= deep link when stations finish loading
+  useEffect(() => {
+    if (requestedStopParamDoneRef.current || stops.length === 0) return;
+    const q = initialUrlParams.stop.toLowerCase();
+    const found =
+      stops.find((s) => s.id.toLowerCase() === q) ||
+      stops.find((s) => s.name.toLowerCase() === q) ||
+      stops.find((s) => s.name.toLowerCase().includes(q));
+    if (found) {
+      requestedStopParamDoneRef.current = true;
+      handleSelectStop(found);
+      setFocusCoords({ lat: found.lat, lon: found.lon, zoom: 13 });
+    }
+  }, [stops, initialUrlParams.stop, handleSelectStop]);
 
   // Clicking any road on MapLibre -> show "Routes on this road"
   const handleRoadClick = useCallback(

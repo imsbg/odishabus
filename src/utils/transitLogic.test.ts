@@ -9,6 +9,7 @@ import {
   estimateFareInr,
   filterBusesByMapBounds,
   filterLiveBuses,
+  findBestLiveBusOrRouteForDeepLink,
   findDirectJourneys,
   findRoutesNearRoadPoint,
   formatGpsAge,
@@ -337,6 +338,45 @@ test('estimateBusCurrentPosition projects faded bus along route according to tim
   const fallbackEst = estimateBusCurrentPosition(unloadedBus, gpsUnix + 5 * 60, testBus.path);
   assert.ok(fallbackEst);
   assert.ok(fallbackEst.distanceMovedKm >= 1.5 && fallbackEst.distanceMovedKm <= 4.0);
+});
+
+test('findBestLiveBusOrRouteForDeepLink selects active live bus on route/corridor or falls back to exact route', () => {
+  const { buses, routes } = getInitialDataset();
+  const sampleRoute = routes[0];
+  const activeBusOnRoute = {
+    ...buses[0],
+    registrationNumber: 'OD02LIVE1',
+    routeNumber: 'CTC0001D',
+    origin: 'Brahmapur',
+    destination: 'Kataka',
+    isOnTrip: true,
+    speedKmh: 45
+  };
+  const customRoute = {
+    ...sampleRoute,
+    id: 'r-ctc1u',
+    routeNumber: 'CTC0001U',
+    origin: 'Kataka',
+    destination: 'Brahmapur'
+  };
+
+  // Paired opposite direction (CTC0001D) live bus wins when CTC0001U has no active bus
+  const res1 = findBestLiveBusOrRouteForDeepLink([activeBusOnRoute], [customRoute], {
+    routeCode: 'CTC0001U',
+    from: 'Bhubaneswar',
+    to: 'Brahmapur'
+  });
+  assert.equal(res1.bus?.registrationNumber, 'OD02LIVE1');
+  assert.equal(res1.route?.routeNumber, 'CTC0001U');
+
+  // When no buses are running at night, cleanly returns the exact route fallback
+  const res2 = findBestLiveBusOrRouteForDeepLink([], [customRoute], {
+    routeCode: 'CTC0001U',
+    from: 'Bhubaneswar',
+    to: 'Brahmapur'
+  });
+  assert.equal(res2.bus, null);
+  assert.equal(res2.route?.routeNumber, 'CTC0001U');
 });
 
 

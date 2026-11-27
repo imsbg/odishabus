@@ -1231,6 +1231,88 @@ export function estimateBusCurrentPosition(
   };
 }
 
+/**
+ * Resolves a corridor deep-link (?route=BSR0038U&from=Bhubaneswar&to=Kamakhyanagar)
+ * to the best currently active live bus on that route/corridor, plus the matching BusRoute fallback.
+ */
+export function findBestLiveBusOrRouteForDeepLink(
+  buses: LiveBus[],
+  routes: BusRoute[],
+  options: { routeCode?: string; from?: string; to?: string }
+): { bus: LiveBus | null; route: BusRoute | null } {
+  const rawRoute = (options.routeCode || '').trim().toUpperCase();
+  const baseRoute = rawRoute.replace(/[UD]$/i, '');
+  const fromNorm = normalizeTripPlannerStopQuery(options.from || '');
+  const toNorm = normalizeTripPlannerStopQuery(options.to || '');
+
+  // 1. Find best matching BusRoute (exact code -> paired U/D code -> stops matching from & to)
+  const exactRoute = rawRoute
+    ? routes.find((r) => r.routeNumber.trim().toUpperCase() === rawRoute)
+    : undefined;
+  const pairedRoute =
+    !exactRoute && baseRoute.length >= 4
+      ? routes.find((r) => r.routeNumber.trim().toUpperCase().replace(/[UD]$/i, '') === baseRoute)
+      : undefined;
+
+  const corridorRoutes =
+    fromNorm && toNorm
+      ? routes.filter((r) => {
+          const hay = `${r.origin} ${r.destination} ${r.name} ${r.stops.map((s) => s.stopName).join(' ')}`.toLowerCase();
+          return hay.includes(fromNorm) && hay.includes(toNorm);
+        })
+      : [];
+
+  const matchedRoute = exactRoute || pairedRoute || corridorRoutes[0] || null;
+
+  // Build set of route numbers serving this corridor for matching live buses
+  const corridorRouteNumbers = new Set<string>();
+  if (rawRoute) corridorRouteNumbers.add(rawRoute);
+  for (const r of corridorRoutes) {
+    if (r.routeNumber) corridorRouteNumbers.add(r.routeNumber.trim().toUpperCase());
+  }
+
+  // Score live buses so an active on-trip moving bus on the exact route always wins
+  const scoreBus = (b: LiveBus): number => {
+    const bRoute = (b.routeNumber || '').trim().toUpperCase();
+    const bBase = bRoute.replace(/[UD]$/i, '');
+    let matchTier = 0;
+
+    if (rawRoute && bRoute === rawRoute) {
+      matchTier = 4000;
+    } else if (baseRoute.length >= 4 && bBase === baseRoute) {
+      matchTier = 3000;
+    } else if (bRoute && corridorRouteNumbers.has(bRoute)) {
+      matchTier = 2000;
+    } else if (fromNorm && toNorm) {
+      const hay = `${b.origin} ${b.destination} ${b.routeName} ${(b.tripStops || []).map((s) => s.stopName).join(' ')}`.toLowerCase();
+      if (hay.includes(fromNorm) && hay.includes(toNorm)) {
+        matchTier = 1500;
+      }
+    }
+
+    if (matchTier === 0) return 0;
+
+    let bonus = 0;
+    if (b.isOnTrip && !isBusSleeping(b)) bonus += 500;
+    else if (b.isOnTrip) bonus += 200;
+    if (b.speedKmh > 0) bonus += 120;
+    if (b.tripStops && b.tripStops.length > 0) bonus += 80;
+    return matchTier + bonus;
+  };
+
+  let bestBus: LiveBus | null = null;
+  let bestScore = 0;
+  for (const b of buses) {
+    const s = scoreBus(b);
+    if (s > bestScore) {
+      bestScore = s;
+      bestBus = b;
+    }
+  }
+
+  return { bus: bestBus, route: matchedRoute };
+}
+
 export function getInitialDataset() {
   return {
     buses: SEED_LIVE_BUSES,

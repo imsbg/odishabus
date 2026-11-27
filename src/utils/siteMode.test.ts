@@ -38,4 +38,20 @@ test('resolveSiteMode respects explicit query overrides and bus deep links', () 
     }),
     'app'
   );
+  assert.equal(
+    resolveSiteMode({
+      hostname: 'imsbg.github.io',
+      pathname: '/odishabus/',
+      search: '?route=CTC0001U&from=Bhubaneswar&to=Brahmapur'
+    }),
+    'app'
+  );
+  assert.equal(
+    resolveSiteMode({
+      hostname: 'imsbg.github.io',
+      pathname: '/odishabus/',
+      search: '?stop=custom-mahuli'
+    }),
+    'app'
+  );
 });

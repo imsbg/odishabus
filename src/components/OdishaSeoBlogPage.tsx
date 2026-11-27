@@ -72,42 +72,87 @@ const FLEET_GUIDE: FleetGuideItem[] = [
   }
 ];
 
-const POPULAR_CORRIDORS = [
+interface PopularCorridorItem {
+  corridor: string;
+  routeCode: string;
+  fleets: string;
+  keyStops: string;
+  fromQuery: string;
+  toQuery: string;
+}
+
+const POPULAR_CORRIDORS: PopularCorridorItem[] = [
   {
-    corridor: 'Bhubaneswar (BSABT) → Puri',
-    fleets: 'Shree Jagannath Express · Ama Bus AC · OSRTC',
-    keyStops: 'Master Canteen, Kalpana Square, Pipili, Malatipatpur, Puri Stand',
-    frequency: 'Every 15–20 min'
+    corridor: 'Bhubaneswar → Puri',
+    routeCode: '50',
+    fleets: 'Ama Bus (50) · OSRTC (MPT0011U)',
+    keyStops:
+      'Bhubaneswar Railway Station, Raj Mahal Square, Dhauli Square, Uttara Square, Pipili Bypass, Satasankha, Sakhigopal, Malatipatpur, Puri Bus Stand',
+    fromQuery: 'Bhubaneswar',
+    toQuery: 'Puri'
   },
   {
     corridor: 'Bhubaneswar → Kataka (Badambadi)',
-    fleets: 'Ama Bus · Ama Bus AC · Mo Bus · OSRTC',
-    keyStops: 'Vani Vihar, Rasulgarh, Pahala, Phulnakhara, Link Road, Badambadi',
-    frequency: 'Every 10–15 min'
+    routeCode: '17',
+    fleets: 'Ama Bus (17 / 18S) · OSRTC Express',
+    keyStops:
+      'Biju Patnaik Airport, AG Square, Vani Vihar, Rasulgarh Square, Pahal, Link Road, Badambadi Bus Stand, CNBT, Barabati Stadium',
+    fromQuery: 'Bhubaneswar',
+    toQuery: 'Kataka'
   },
   {
-    corridor: 'Kamakhyanagar → Mahuli → Dhenkanal → Bhubaneswar',
-    fleets: 'Mukhyamantri Bus Seva · OSRTC',
-    keyStops: 'Kamakhyanagar Dkl, Aluajharana, Mahuli, Kusumajodi, Dhenkanal, Kataka',
-    frequency: 'Regular daily services'
+    corridor: 'Bhubaneswar → Dhenkanal → Kamakhyanagar → Kendujhar',
+    routeCode: 'BSR0038U',
+    fleets: 'OSRTC Express (BSR0038U / BSR0046D)',
+    keyStops:
+      'Bhubaneswar [BSABT], Kataka, Jagatpur, Manguli, Choudwar, Khuntuni, Dhenkanal, Kamakhyanagar, Telkoi, Kendujhar',
+    fromQuery: 'Bhubaneswar',
+    toQuery: 'Kamakhyanagar'
   },
   {
-    corridor: 'Bhubaneswar → Sambalpur',
-    fleets: 'Shree Jagannath Express · OSRTC',
-    keyStops: 'Kataka, Dhenkanal, Angul, Boinda, Rairakhol, Ainthapali',
-    frequency: 'Hourly express & AC'
+    corridor: 'Kamakhyanagar → Mahuli / Kusumajodi → Sogar',
+    routeCode: 'KAM0001U',
+    fleets: 'Mukhyamantri Bus Seva (KAM0001U)',
+    keyStops:
+      'Kamakhyanagar Dkl, Mahulapal Chhaka, Mahuli, Kusumajodi, Anlabhata, Pandua Chhaka, Kamagara, Sogar',
+    fromQuery: 'Kamakhyanagar',
+    toQuery: 'Mahuli'
   },
   {
-    corridor: 'Bhubaneswar → Berhampur (Brahmapur)',
-    fleets: 'Shree Jagannath Express · OSRTC',
-    keyStops: 'Khordha, Balugaon, Rambha, Chhatrapur, Berhampur Stand',
-    frequency: 'Every 30–45 min'
+    corridor: 'Kataka → Bhubaneswar → Brahmapur',
+    routeCode: 'CTC0001U',
+    fleets: 'OSRTC Express (CTC0001U / BRP0006D)',
+    keyStops:
+      'Kataka, Bhubaneswar [BSABT], Khordha Bypass, Jankia, Chandpur, Balugaon Bypass, Keshpur, Rambha, Chatrapur, Brahmapur',
+    fromQuery: 'Bhubaneswar',
+    toQuery: 'Brahmapur'
   },
   {
-    corridor: 'Bhubaneswar → Rourkela',
-    fleets: 'Shree Jagannath Express · OSRTC',
-    keyStops: 'Angul, Talcher, Pallahara, Barkote, Rajgangpur, Rourkela',
-    frequency: 'Day & overnight AC'
+    corridor: 'Bhubaneswar → Sambalpur → Jharsuguda',
+    routeCode: 'BSR0022U',
+    fleets: 'OSRTC Express (BSR0022U / BSR0023U)',
+    keyStops:
+      'Bhubaneswar [BSABT], Khordha, Nayagada, Dasapalla, Boudh, Redhakhol, Jujumara, Sambalpur, Rengali, Jharsuguda',
+    fromQuery: 'Bhubaneswar',
+    toQuery: 'Sambalpur'
+  },
+  {
+    corridor: 'Bhubaneswar → Kamakhyanagar → Raurkela',
+    routeCode: 'BSR0054U',
+    fleets: 'OSRTC Express (BSR0054U)',
+    keyStops:
+      'Bhubaneswar [BSABT], Kataka, Khuntuni, Dhenkanal, Kamakhyanagar, Pitiri, Khamar, Palalahada, Barkote, Rajamunda, Raurkela',
+    fromQuery: 'Bhubaneswar',
+    toQuery: 'Raurkela'
+  },
+  {
+    corridor: 'Puri → Bhubaneswar → Baleshwar → Baripada',
+    routeCode: 'JE_0204U',
+    fleets: 'Shree Jagannath Express (JE_0204U)',
+    keyStops:
+      'Puri, Bhubaneswar [BSABT], Kataka, Panikoili, Bhadrak, Baleshwar, Baripada',
+    fromQuery: 'Bhubaneswar',
+    toQuery: 'Baleshwar'
   }
 ];
 
@@ -587,35 +632,52 @@ export const OdishaSeoBlogPage: React.FC<OdishaSeoBlogPageProps> = ({
                 <thead>
                   <tr className="border-b border-slate-200/90 text-xs font-semibold text-slate-500 bg-slate-50/70">
                     <th className="py-3.5 px-5">Corridor</th>
-                    <th className="py-3.5 px-5">Bus Services</th>
-                    <th className="py-3.5 px-5">Major Stops</th>
-                    <th className="py-3.5 px-5">Frequency</th>
+                    <th className="py-3.5 px-5">Route &amp; Fleet</th>
+                    <th className="py-3.5 px-5">Verified Stops</th>
                     <th className="py-3.5 px-5 text-right">Live Map</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200/80 text-sm">
-                  {POPULAR_CORRIDORS.map((row) => (
-                    <tr key={row.corridor} className="hover:bg-slate-50/70 transition-colors">
-                      <td className="py-4 px-5 font-semibold text-slate-950 whitespace-nowrap">
-                        {row.corridor}
-                      </td>
-                      <td className="py-4 px-5 text-slate-700">{row.fleets}</td>
-                      <td className="py-4 px-5 text-slate-600 text-xs leading-relaxed">
-                        {row.keyStops}
-                      </td>
-                      <td className="py-4 px-5 font-mono text-xs tabular-nums text-slate-600 whitespace-nowrap">
-                        {row.frequency}
-                      </td>
-                      <td className="py-4 px-5 text-right whitespace-nowrap">
-                        <a
-                          href={LIVE_APP_URL}
-                          className="text-xs font-semibold text-orange-600 hover:text-orange-500 hover:underline underline-offset-4"
-                        >
-                          Track Live
-                        </a>
-                      </td>
-                    </tr>
-                  ))}
+                  {POPULAR_CORRIDORS.map((row) => {
+                    const trackQuery = `?route=${encodeURIComponent(row.routeCode)}&from=${encodeURIComponent(row.fromQuery)}&to=${encodeURIComponent(row.toQuery)}`;
+                    const trackHref = `${LIVE_APP_URL}${trackQuery}`;
+                    return (
+                      <tr key={row.routeCode} className="hover:bg-slate-50/70 transition-colors">
+                        <td className="py-4 px-5 font-semibold text-slate-950 whitespace-nowrap">
+                          {row.corridor}
+                        </td>
+                        <td className="py-4 px-5 text-slate-700 whitespace-nowrap text-xs font-medium">
+                          {row.fleets}
+                        </td>
+                        <td className="py-4 px-5 text-slate-600 text-xs leading-relaxed">
+                          {row.keyStops}
+                        </td>
+                        <td className="py-4 px-5 text-right whitespace-nowrap">
+                          <a
+                            href={trackHref}
+                            onClick={(e) => {
+                              if (isLocalPreview && onOpenLocalApp) {
+                                e.preventDefault();
+                                const url = new URL(window.location.href);
+                                url.searchParams.delete('view');
+                                url.searchParams.delete('mode');
+                                url.searchParams.delete('page');
+                                url.searchParams.set('route', row.routeCode);
+                                url.searchParams.set('from', row.fromQuery);
+                                url.searchParams.set('to', row.toQuery);
+                                window.history.replaceState({}, '', url.toString());
+                                onOpenLocalApp();
+                              }
+                            }}
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-orange-600 hover:text-orange-500 hover:underline underline-offset-4"
+                          >
+                            <span>Track Live</span>
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </a>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
