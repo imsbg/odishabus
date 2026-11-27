@@ -19,7 +19,7 @@ import {
   FOLLOW_BUS_TARGET_ZOOM,
   SVG_BUS_MIN_ZOOM
 } from '../utils/busMapSprites';
-import { isBusSleeping } from '../utils/transitLogic';
+import { estimateBusCurrentPosition, isBusSleeping } from '../utils/transitLogic';
 
 interface OdishaTransitMapProps {
   buses: LiveBus[];
@@ -38,6 +38,7 @@ interface OdishaTransitMapProps {
   onBoundsChange?: (bounds: MapViewportBounds) => void;
   isDark: boolean;
   focusCoords: { lat: number; lon: number; zoom?: number } | null;
+  feedTime?: number;
 }
 
 interface LayerVisibility {
@@ -93,6 +94,43 @@ function createUserGpsElement(): HTMLDivElement {
     '<span class="user-gps-dot"></span>' +
     '</div>';
   return root;
+}
+
+function createBusCalloutElement(kind: 'gps' | 'est', label: string): HTMLDivElement {
+  const root = document.createElement('div');
+  root.style.pointerEvents = 'none';
+  root.setAttribute('data-testid', kind === 'gps' ? 'map-last-gps-tag' : 'map-may-be-here-tag');
+  const tag = document.createElement('div');
+  tag.className = `bus-ghost-tag ${kind === 'gps' ? 'bus-ghost-tag-gps' : 'bus-ghost-tag-est'}`;
+  const dot = document.createElement('span');
+  dot.className = 'bus-ghost-dot';
+  dot.style.backgroundColor = kind === 'gps' ? '#22c55e' : '#fef3c7';
+  const text = document.createElement('span');
+  text.textContent = label;
+  tag.appendChild(dot);
+  tag.appendChild(text);
+  root.appendChild(tag);
+  return root;
+}
+
+function resolveFallbackRoutePath(
+  bus: LiveBus | null,
+  routes: BusRoute[]
+): [number, number][] | undefined {
+  if (!bus) return undefined;
+  if (bus.path && bus.path.length >= 2) return undefined;
+  if (bus.tripStops && bus.tripStops.length >= 2) return undefined;
+  const match = routes.find(
+    (r) =>
+      (bus.serviceKey && r.serviceKey && r.serviceKey === bus.serviceKey) ||
+      (bus.routeNumber &&
+        bus.routeNumber !== 'OFF DUTY' &&
+        r.routeNumber.toUpperCase() === bus.routeNumber.toUpperCase())
+  );
+  if (!match) return undefined;
+  if (match.path && match.path.length >= 2) return match.path;
+  if (match.stops.length >= 2) return match.stops.map((s) => [s.lat, s.lon] as [number, number]);
+  return undefined;
 }
 
 const FLEET_COLOR: Record<FleetCategory, string> = {
@@ -575,6 +613,70 @@ function buildActiveTrackGeoJson(
   };
 }
 
+function buildGhostBusGeoJson(
+  selectedBus: LiveBus | null,
+  routes: BusRoute[],
+  nowSec: number
+): {
+  connector: GeoJsonCollection;
+  bus: GeoJsonCollection;
+  est: ReturnType<typeof estimateBusCurrentPosition>;
+} {
+  const empty: GeoJsonCollection = { type: 'FeatureCollection', features: [] };
+  if (!selectedBus) {
+    return { connector: empty, bus: empty, est: null };
+  }
+
+  const fallbackPath = resolveFallbackRoutePath(selectedBus, routes);
+  const est = estimateBusCurrentPosition(selectedBus, nowSec, fallbackPath);
+  if (!est) {
+    return { connector: empty, bus: empty, est: null };
+  }
+
+  const baseId = FLEET_ICON_IDS[selectedBus.fleet] || 'bus-osrtc';
+
+  return {
+    connector: {
+      type: 'FeatureCollection',
+      features:
+        est.connectorPath.length >= 2
+          ? [
+              {
+                type: 'Feature',
+                geometry: {
+                  type: 'LineString',
+                  coordinates: est.connectorPath.map(([lat, lon]) => [lon, lat])
+                },
+                properties: {
+                  reg: selectedBus.registrationNumber
+                }
+              }
+            ]
+          : []
+    },
+    bus: {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          geometry: {
+            type: 'Point',
+            coordinates: [est.lon, est.lat]
+          },
+          properties: {
+            reg: selectedBus.registrationNumber,
+            icon: `${baseId}-sel`,
+            svgIcon: `${baseId}-svg-sel`,
+            bearing: est.bearing,
+            gpsAgeMinutes: est.gpsAgeMinutes
+          }
+        }
+      ]
+    },
+    est
+  };
+}
+
 function buildRoadPinGeoJson(selectedRoad: RoadRoutesSelection | null): GeoJsonCollection {
   if (!selectedRoad) {
     return { type: 'FeatureCollection', features: [] };
@@ -598,6 +700,7 @@ function buildRoadPinGeoJson(selectedRoad: RoadRoutesSelection | null): GeoJsonC
 
 export const OdishaTransitMap: React.FC<OdishaTransitMapProps> = ({
   buses,
+  routes,
   stops,
   selectedBus,
   selectedRoute,
@@ -611,7 +714,8 @@ export const OdishaTransitMap: React.FC<OdishaTransitMapProps> = ({
   onRoadClick,
   onBoundsChange,
   isDark,
-  focusCoords
+  focusCoords,
+  feedTime = 0
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -619,9 +723,14 @@ export const OdishaTransitMap: React.FC<OdishaTransitMapProps> = ({
   const lastFittedKeyRef = useRef<string>('');
   const currentThemeRef = useRef<boolean>(isDark);
   const sleepMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
+  const ghostMarkersRef = useRef<{
+    gps: maplibregl.Marker | null;
+    est: maplibregl.Marker | null;
+  }>({ gps: null, est: null });
   const userGpsMarkerRef = useRef<maplibregl.Marker | null>(null);
 
   const busesRef = useRef<LiveBus[]>(buses);
+  const routesRef = useRef<BusRoute[]>(routes);
   const stopsRef = useRef<BusStop[]>(stops);
   const selectedBusRef = useRef<LiveBus | null>(selectedBus);
   const selectedRouteRef = useRef<BusRoute | null>(selectedRoute);
@@ -636,6 +745,7 @@ export const OdishaTransitMap: React.FC<OdishaTransitMapProps> = ({
   const onBoundsChangeRef = useRef(onBoundsChange);
 
   busesRef.current = buses;
+  routesRef.current = routes;
   stopsRef.current = stops;
   selectedBusRef.current = selectedBus;
   selectedRouteRef.current = selectedRoute;
@@ -657,8 +767,40 @@ export const OdishaTransitMap: React.FC<OdishaTransitMapProps> = ({
     liveBuses: true,
     stops: true
   });
+  const [clockSec, setClockSec] = useState<number>(() =>
+    feedTime > 0 ? feedTime : Math.floor(Date.now() / 1000)
+  );
+  const feedAnchorRef = useRef<{ feedTime: number; localMs: number }>({
+    feedTime,
+    localMs: Date.now()
+  });
   const layersRef = useRef(layers);
   layersRef.current = layers;
+  const clockSecRef = useRef(clockSec);
+  clockSecRef.current = clockSec;
+
+  // Keep reference clock anchored to server feedTime + elapsed local time (immune to client clock skew)
+  useEffect(() => {
+    feedAnchorRef.current = { feedTime, localMs: Date.now() };
+    setClockSec(feedTime > 0 ? feedTime : Math.floor(Date.now() / 1000));
+  }, [feedTime]);
+
+  // Refresh time-based faded bus projection every 30s while a bus is selected
+  useEffect(() => {
+    if (!selectedBus) return;
+    const computeRefNow = () => {
+      const anchor = feedAnchorRef.current;
+      if (anchor.feedTime > 0) {
+        return anchor.feedTime + Math.max(0, Math.floor((Date.now() - anchor.localMs) / 1000));
+      }
+      return Math.floor(Date.now() / 1000);
+    };
+    setClockSec(computeRefNow());
+    const timer = window.setInterval(() => {
+      setClockSec(computeRefNow());
+    }, 30_000);
+    return () => window.clearInterval(timer);
+  }, [selectedBus?.registrationNumber, feedTime]);
 
   // Sync floating animated "z z Z" markers over arrived / resting / parked buses
   const syncSleepingMarkers = (map: maplibregl.Map) => {
@@ -723,6 +865,51 @@ export const OdishaTransitMap: React.FC<OdishaTransitMapProps> = ({
         activeMarkers.set(reg, marker);
       }
     }
+  };
+
+  // Sync crisp non-overlapping callout tags ("Last GPS · Xm ago" & "May be here now") for the 2 same buses
+  const syncGhostCalloutMarkers = (
+    map: maplibregl.Map,
+    bus: LiveBus | null,
+    est: ReturnType<typeof estimateBusCurrentPosition>
+  ) => {
+    const clearMarkers = () => {
+      ghostMarkersRef.current.gps?.remove();
+      ghostMarkersRef.current.est?.remove();
+      ghostMarkersRef.current = { gps: null, est: null };
+    };
+
+    if (!layersRef.current.liveBuses || !bus || !est) {
+      clearMarkers();
+      return;
+    }
+
+    const gpsAgeCompact =
+      est.gpsAgeMinutes >= 60
+        ? `${Math.floor(est.gpsAgeMinutes / 60)}h ${est.gpsAgeMinutes % 60}m ago`
+        : `${est.gpsAgeMinutes}m ago`;
+
+    clearMarkers();
+
+    // Place tags on opposite sides based on vertical direction so they never collide
+    const estIsNorth = est.lat >= bus.lat;
+    const gpsMarker = new maplibregl.Marker({
+      element: createBusCalloutElement('gps', `Last GPS · ${gpsAgeCompact}`),
+      anchor: estIsNorth ? 'top' : 'bottom',
+      offset: estIsNorth ? [0, 26] : [0, -26]
+    })
+      .setLngLat([bus.lon, bus.lat])
+      .addTo(map);
+
+    const estMarker = new maplibregl.Marker({
+      element: createBusCalloutElement('est', 'May be here now'),
+      anchor: estIsNorth ? 'bottom' : 'top',
+      offset: estIsNorth ? [0, -26] : [0, 26]
+    })
+      .setLngLat([est.lon, est.lat])
+      .addTo(map);
+
+    ghostMarkersRef.current = { gps: gpsMarker, est: estMarker };
   };
 
   // Register custom circular & realistic SVG bus sprites + GeoJSON sources & layers whenever style loads
@@ -987,8 +1174,8 @@ export const OdishaTransitMap: React.FC<OdishaTransitMapProps> = ({
     }
 
     // 5. Live Buses GPU Symbol Layers:
-    //    - Regional/State zoom (< 13.5): Enlarged circular directional arrow markers
-    //    - Close street zoom (>= 13.5) OR actively followed bus: Realistic top-down SVG Odisha coaches
+    //    - Unselected buses at regional zoom (< 13.5): Enlarged circular directional arrow markers
+    //    - Close street zoom (>= 13.5) OR ANY selected bus: Realistic top-down SVG Odisha coaches
     const busData = buildBusGeoJson(
       busesRef.current,
       selectedBusRef.current?.registrationNumber || null,
@@ -1004,21 +1191,11 @@ export const OdishaTransitMap: React.FC<OdishaTransitMapProps> = ({
         type: 'symbol',
         source: 'odisha-buses',
         maxzoom: SVG_BUS_MIN_ZOOM,
-        filter: ['!=', ['get', 'isFollowed'], 1],
+        filter: ['!=', ['get', 'isSelected'], 1],
         layout: {
           visibility: busesVisibility,
           'icon-image': ['get', 'icon'],
-          'icon-size': [
-            'interpolate',
-            ['linear'],
-            ['zoom'],
-            6,
-            ['case', ['==', ['get', 'isSelected'], 1], 1.0, 0.68],
-            9.5,
-            ['case', ['==', ['get', 'isSelected'], 1], 1.14, 0.86],
-            12.5,
-            ['case', ['==', ['get', 'isSelected'], 1], 1.24, 1.02]
-          ],
+          'icon-size': ['interpolate', ['linear'], ['zoom'], 6, 0.68, 9.5, 0.86, 12.5, 1.02],
           'icon-rotate': ['get', 'bearing'],
           'icon-rotation-alignment': 'map',
           'icon-allow-overlap': true,
@@ -1041,11 +1218,11 @@ export const OdishaTransitMap: React.FC<OdishaTransitMapProps> = ({
             ['linear'],
             ['zoom'],
             SVG_BUS_MIN_ZOOM,
-            ['case', ['==', ['get', 'isSelected'], 1], 0.72, 0.56],
+            ['case', ['==', ['get', 'isSelected'], 1], 0.96, 0.56],
             15.2,
-            ['case', ['==', ['get', 'isSelected'], 1], 0.92, 0.76],
+            ['case', ['==', ['get', 'isSelected'], 1], 1.04, 0.76],
             17.5,
-            ['case', ['==', ['get', 'isSelected'], 1], 1.12, 0.96]
+            ['case', ['==', ['get', 'isSelected'], 1], 1.14, 0.96]
           ],
           'icon-rotate': ['get', 'bearing'],
           'icon-rotation-alignment': 'map',
@@ -1061,11 +1238,11 @@ export const OdishaTransitMap: React.FC<OdishaTransitMapProps> = ({
         type: 'symbol',
         source: 'odisha-buses',
         maxzoom: SVG_BUS_MIN_ZOOM,
-        filter: ['==', ['get', 'isFollowed'], 1],
+        filter: ['==', ['get', 'isSelected'], 1],
         layout: {
           visibility: busesVisibility,
           'icon-image': ['get', 'svgIcon'],
-          'icon-size': ['interpolate', ['linear'], ['zoom'], 6, 0.62, 11, 0.76, SVG_BUS_MIN_ZOOM, 0.85],
+          'icon-size': ['interpolate', ['linear'], ['zoom'], 6, 0.74, 10.5, 0.88, SVG_BUS_MIN_ZOOM, 0.96],
           'icon-rotate': ['get', 'bearing'],
           'icon-rotation-alignment': 'map',
           'icon-allow-overlap': true,
@@ -1075,6 +1252,104 @@ export const OdishaTransitMap: React.FC<OdishaTransitMapProps> = ({
       });
     }
 
+    // 6. Time-Estimated Faded ("May be here now") Identical Duplicate SVG Coach + Dashed Road Connector
+    const ghostData = buildGhostBusGeoJson(
+      selectedBusRef.current,
+      routesRef.current,
+      clockSecRef.current
+    );
+    if (!map.getSource('odisha-ghost-connector')) {
+      map.addSource('odisha-ghost-connector', { type: 'geojson', data: ghostData.connector });
+    }
+    if (!map.getSource('odisha-ghost-bus')) {
+      map.addSource('odisha-ghost-bus', { type: 'geojson', data: ghostData.bus });
+    }
+    if (!map.getLayer('odisha-ghost-connector-casing')) {
+      map.addLayer({
+        id: 'odisha-ghost-connector-casing',
+        type: 'line',
+        source: 'odisha-ghost-connector',
+        layout: {
+          visibility: busesVisibility,
+          'line-cap': 'round',
+          'line-join': 'round'
+        },
+        paint: {
+          'line-color': dark ? '#0b1220' : '#ffffff',
+          'line-width': 6.5,
+          'line-opacity': 0.9
+        }
+      });
+    }
+    if (!map.getLayer('odisha-ghost-connector-line')) {
+      map.addLayer({
+        id: 'odisha-ghost-connector-line',
+        type: 'line',
+        source: 'odisha-ghost-connector',
+        layout: {
+          visibility: busesVisibility,
+          'line-cap': 'round',
+          'line-join': 'round'
+        },
+        paint: {
+          'line-color': '#f59e0b',
+          'line-width': 3.8,
+          'line-dasharray': [2.2, 1.8],
+          'line-opacity': 0.96
+        }
+      });
+    }
+    if (!map.getLayer('odisha-ghost-bus-halo')) {
+      map.addLayer({
+        id: 'odisha-ghost-bus-halo',
+        type: 'circle',
+        source: 'odisha-ghost-bus',
+        layout: { visibility: busesVisibility },
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 20, 11, 26, 15, 32],
+          'circle-color': '#f59e0b',
+          'circle-opacity': 0.16,
+          'circle-stroke-color': '#d97706',
+          'circle-stroke-width': 2,
+          'circle-stroke-opacity': 0.72
+        }
+      });
+    }
+    if (!map.getLayer('odisha-ghost-bus-svg-layer')) {
+      map.addLayer({
+        id: 'odisha-ghost-bus-svg-layer',
+        type: 'symbol',
+        source: 'odisha-ghost-bus',
+        layout: {
+          visibility: busesVisibility,
+          'icon-image': ['get', 'svgIcon'],
+          'icon-size': [
+            'interpolate',
+            ['linear'],
+            ['zoom'],
+            6,
+            0.74,
+            10.5,
+            0.88,
+            SVG_BUS_MIN_ZOOM,
+            0.96,
+            15.2,
+            1.04,
+            17.5,
+            1.14
+          ],
+          'icon-rotate': ['get', 'bearing'],
+          'icon-rotation-alignment': 'map',
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true
+        },
+        paint: {
+          'icon-opacity': 0.45
+        }
+      });
+    }
+
+    syncGhostCalloutMarkers(map, selectedBusRef.current, ghostData.est);
     styleReadyRef.current = true;
   };
 
@@ -1153,11 +1428,12 @@ export const OdishaTransitMap: React.FC<OdishaTransitMapProps> = ({
       map.on('click', (e: maplibregl.MapMouseEvent) => {
         if (!styleReadyRef.current) return;
 
-        // 1. Check live bus hit across circular & SVG coach layers
+        // 1. Check live bus hit across circular, SVG coach & faded estimated bus layers
         const busLayers = [
           'odisha-followed-bus-svg-layer',
           'odisha-buses-svg-layer',
-          'odisha-buses-layer'
+          'odisha-buses-layer',
+          'odisha-ghost-bus-svg-layer'
         ].filter((id) => Boolean(map.getLayer(id)));
         if (busLayers.length > 0) {
           const busHits = map.queryRenderedFeatures(e.point, { layers: busLayers });
@@ -1222,6 +1498,9 @@ export const OdishaTransitMap: React.FC<OdishaTransitMapProps> = ({
       resizeObserver?.disconnect();
       sleepMarkersRef.current.forEach((m) => m.remove());
       sleepMarkersRef.current.clear();
+      ghostMarkersRef.current.gps?.remove();
+      ghostMarkersRef.current.est?.remove();
+      ghostMarkersRef.current = { gps: null, est: null };
       userGpsMarkerRef.current?.remove();
       userGpsMarkerRef.current = null;
       if (mapRef.current) {
@@ -1284,17 +1563,40 @@ export const OdishaTransitMap: React.FC<OdishaTransitMapProps> = ({
     if (stopsSrc) stopsSrc.setData(activeTrack.stops);
 
     if (selectedBus) {
-      const busKey = `bus-${selectedBus.registrationNumber}`;
+      const fallbackPath = resolveFallbackRoutePath(selectedBus, routes);
+      const est = estimateBusCurrentPosition(selectedBus, clockSecRef.current, fallbackPath);
+      const hasTrack = Boolean(
+        (selectedBus.path && selectedBus.path.length >= 2) ||
+          (selectedBus.tripStops && selectedBus.tripStops.length >= 2)
+      );
+      const busKey = `bus-${selectedBus.registrationNumber}-${hasTrack ? 'track' : 'init'}`;
       if (lastFittedKeyRef.current !== busKey) {
         lastFittedKeyRef.current = busKey;
         if (!followBusRef.current) {
-          // Never zoom out on bus click: preserve user's current zoom if zoomed in, or gently zoom in if at state overview
+          // Never zoom out on bus click: strictly preserve user's zoom or gently zoom IN so both real & faded buses are clearly visible
           const currentZoom = map.getZoom();
-          map.easeTo({
-            center: [selectedBus.lon, selectedBus.lat],
-            zoom: Math.max(currentZoom, 10.5),
-            duration: 500
-          });
+          if (est) {
+            const dKm = est.distanceMovedKm;
+            const idealPairZoom =
+              dKm <= 1.2 ? 13.4 : dKm <= 2.8 ? 12.6 : dKm <= 6.0 ? 11.6 : dKm <= 12.0 ? 10.8 : 10.2;
+            const targetZoom = Math.max(currentZoom, idealPairZoom);
+            const midLon = (selectedBus.lon + est.lon) / 2;
+            const midLat = (selectedBus.lat + est.lat) / 2;
+            // If user is already zoomed very close (> 13.8) and faded bus is several km away, keep real bus centered
+            const center: [number, number] =
+              currentZoom > 13.8 && dKm > 2.0 ? [selectedBus.lon, selectedBus.lat] : [midLon, midLat];
+            map.easeTo({
+              center,
+              zoom: targetZoom,
+              duration: 500
+            });
+          } else {
+            map.easeTo({
+              center: [selectedBus.lon, selectedBus.lat],
+              zoom: Math.max(currentZoom, 11.2),
+              duration: 500
+            });
+          }
         }
       }
     } else if (selectedRoute) {
@@ -1312,7 +1614,19 @@ export const OdishaTransitMap: React.FC<OdishaTransitMapProps> = ({
     } else {
       lastFittedKeyRef.current = '';
     }
-  }, [selectedBus, selectedRoute]);
+  }, [selectedBus, selectedRoute, routes]);
+
+  // Sync faded time-estimated ("May be here now") identical duplicate SVG bus, connector & callout tags
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !styleReadyRef.current) return;
+    const ghost = buildGhostBusGeoJson(selectedBus, routes, clockSec);
+    const connSrc = map.getSource('odisha-ghost-connector') as maplibregl.GeoJSONSource | undefined;
+    const busSrc = map.getSource('odisha-ghost-bus') as maplibregl.GeoJSONSource | undefined;
+    if (connSrc) connSrc.setData(ghost.connector);
+    if (busSrc) busSrc.setData(ghost.bus);
+    syncGhostCalloutMarkers(map, selectedBus, ghost.est);
+  }, [selectedBus, routes, clockSec]);
 
   // Sync clicked road pin
   useEffect(() => {
@@ -1352,7 +1666,15 @@ export const OdishaTransitMap: React.FC<OdishaTransitMapProps> = ({
     if (!map || !styleReadyRef.current) return;
 
     const busVis = layers.liveBuses ? 'visible' : 'none';
-    for (const lid of ['odisha-buses-layer', 'odisha-buses-svg-layer', 'odisha-followed-bus-svg-layer']) {
+    for (const lid of [
+      'odisha-buses-layer',
+      'odisha-buses-svg-layer',
+      'odisha-followed-bus-svg-layer',
+      'odisha-ghost-connector-casing',
+      'odisha-ghost-connector-line',
+      'odisha-ghost-bus-halo',
+      'odisha-ghost-bus-svg-layer'
+    ]) {
       if (map.getLayer(lid)) {
         map.setLayoutProperty(lid, 'visibility', busVis);
       }
@@ -1379,6 +1701,8 @@ export const OdishaTransitMap: React.FC<OdishaTransitMapProps> = ({
     }
 
     syncSleepingMarkers(map);
+    const ghost = buildGhostBusGeoJson(selectedBusRef.current, routesRef.current, clockSecRef.current);
+    syncGhostCalloutMarkers(map, selectedBusRef.current, ghost.est);
   }, [layers, showRouteMark]);
 
   // Render pulsing blue GPS dot at the user's REAL location whenever available

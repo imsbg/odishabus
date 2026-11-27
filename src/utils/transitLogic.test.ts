@@ -5,6 +5,7 @@ import {
   calculateVehicleSpeed,
   classifyFleetCategory,
   decodeGtfsStopId,
+  estimateBusCurrentPosition,
   estimateFareInr,
   filterBusesByMapBounds,
   filterLiveBuses,
@@ -256,5 +257,88 @@ test('replaceCuttackWithKataka replaces Cuttack everywhere while allowing users 
   const foundJourneys = findDirectJourneys(routes, buses, 'Brahmapur', 'Cuttack', 'ALL');
   assert.ok(foundJourneys.length > 0);
 });
+
+test('estimateBusCurrentPosition projects faded bus along route according to time & next stop, and skips fresh or sleeping buses', () => {
+  // Build a deterministic IST timestamp: 14:51 IST -> 09:21 UTC (same day)
+  const gpsUnix = Math.floor(Date.UTC(2026, 4, 15, 9, 21, 0) / 1000); // 14:51 IST
+  const testBus = {
+    ...getInitialDataset().buses[0],
+    isOnTrip: true,
+    fleet: 'Mukhyamantri Bus Seva' as const,
+    lat: 20.84661, // Aluajharana
+    lon: 85.52417,
+    speedKmh: 30,
+    timestamp: gpsUnix,
+    nextStopName: 'Anlabhata',
+    nextStopEta: '14:58',
+    tripStops: [
+      { stopId: 's1', stopName: 'Aluajharana', lat: 20.84661, lon: 85.52417, scheduledTime: '14:51', estimatedTime: '14:51', status: 'passed' as const, sequence: 1 },
+      { stopId: 's2', stopName: 'Anlabhata', lat: 20.80956, lon: 85.54063, scheduledTime: '14:58', estimatedTime: '14:58', status: 'current' as const, sequence: 2 },
+      { stopId: 's3', stopName: 'Pandua Chhaka', lat: 20.78589, lon: 85.54882, scheduledTime: '15:02', estimatedTime: '15:02', status: 'upcoming' as const, sequence: 3 }
+    ],
+    path: [
+      [20.84661, 85.52417] as [number, number],
+      [20.80956, 85.54063] as [number, number],
+      [20.78589, 85.54882] as [number, number]
+    ]
+  };
+
+  // 1. Fresh GPS (30s old) -> returns null (no ghost bus needed)
+  assert.equal(estimateBusCurrentPosition(testBus, gpsUnix + 30), null);
+
+  // 2. 4 minutes later (14:55 IST, halfway between 14:51 Aluajharana and 14:58 Anlabhata)
+  const estMid = estimateBusCurrentPosition(testBus, gpsUnix + 4 * 60);
+  assert.ok(estMid);
+  assert.equal(estMid.method, 'schedule');
+  assert.equal(estMid.gpsAgeMinutes, 4);
+  assert.equal(estMid.statusText, 'GPS 4 min old — may have moved on');
+  assert.equal(estMid.estimatedNextStopName, 'Anlabhata');
+  assert.ok(estMid.distanceMovedKm > 1.5 && estMid.distanceMovedKm < 4.0);
+  assert.ok(estMid.lat < testBus.lat && estMid.lat > 20.80956);
+  assert.ok(estMid.connectorPath.length >= 2);
+
+  // 3. 9 minutes later (15:00 IST, past Anlabhata 14:58 -> halfway toward Pandua Chhaka 15:02)
+  const estNextLeg = estimateBusCurrentPosition(testBus, gpsUnix + 9 * 60);
+  assert.ok(estNextLeg);
+  assert.equal(estNextLeg.method, 'schedule');
+  assert.equal(estNextLeg.gpsAgeMinutes, 9);
+  assert.equal(estNextLeg.estimatedNextStopName, 'Pandua Chhaka');
+  assert.ok(estNextLeg.lat < 20.80956 && estNextLeg.lat > 20.78589);
+
+  // 4. Off-duty / sleeping bus -> returns null
+  const offDutyBus = { ...testBus, isOnTrip: false, fleet: 'Standby' as const, routeNumber: 'OFF DUTY' };
+  assert.equal(estimateBusCurrentPosition(offDutyBus, gpsUnix + 8 * 60), null);
+
+  // 5. Physical max speed cap prevents noisy timetables from teleporting 40+ km off-screen
+  const noisyBus = {
+    ...testBus,
+    fleet: 'Mukhyamantri Bus Seva' as const,
+    tripStops: [
+      { stopId: 'n1', stopName: 'Start', lat: 20.85, lon: 85.52, scheduledTime: '14:51', estimatedTime: '14:51', status: 'passed' as const, sequence: 1 },
+      { stopId: 'n2', stopName: 'Far Stop', lat: 20.40, lon: 85.52, scheduledTime: '15:01', estimatedTime: '15:01', status: 'current' as const, sequence: 2 }
+    ],
+    path: [
+      [20.85, 85.52] as [number, number],
+      [20.40, 85.52] as [number, number]
+    ]
+  };
+  const cappedEst = estimateBusCurrentPosition(noisyBus, gpsUnix + 10 * 60);
+  assert.ok(cappedEst);
+  // 10 min at max 38 km/h for MBS -> capped around ~6.3 km, never ~48 km
+  assert.ok(cappedEst.distanceMovedKm <= 6.5, `expected capped <= 6.5 km, got ${cappedEst.distanceMovedKm}`);
+
+  // 6. Works immediately via fallbackRoutePath even before trip detail loads and speedKmh === 0
+  const unloadedBus = {
+    ...testBus,
+    speedKmh: 0,
+    tripStops: [],
+    path: undefined
+  };
+  const fallbackEst = estimateBusCurrentPosition(unloadedBus, gpsUnix + 5 * 60, testBus.path);
+  assert.ok(fallbackEst);
+  assert.ok(fallbackEst.distanceMovedKm >= 1.5 && fallbackEst.distanceMovedKm <= 4.0);
+});
+
+
 
 

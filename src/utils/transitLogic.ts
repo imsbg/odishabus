@@ -1,5 +1,6 @@
 import { SEED_LIVE_BUSES, SEED_ROUTES, SEED_STATUS, SEED_STOPS } from './odishaSeedData';
 import {
+  BusEstimatedPosition,
   BusRoute,
   BusStop,
   DirectJourneyMatch,
@@ -893,6 +894,341 @@ export function getStopRoutesAndBuses(
   );
 
   return { routesServingStop, busesServingStop };
+}
+
+function parseClockToMinutesOfDay(raw?: string | null): number | null {
+  if (!raw) return null;
+  const trimmed = String(raw).trim();
+  const match = /^(\d{1,2}):(\d{2})(?::\d{2})?(?:\s*(AM|PM))?$/i.exec(trimmed);
+  if (!match) return null;
+  let hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  const meridiem = match[3]?.toUpperCase();
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes) || minutes < 0 || minutes > 59) {
+    return null;
+  }
+  if (meridiem) {
+    if (hours < 1 || hours > 12) return null;
+    if (meridiem === 'AM') hours = hours === 12 ? 0 : hours;
+    else hours = hours === 12 ? 12 : hours + 12;
+  } else if (hours < 0 || hours > 23) {
+    return null;
+  }
+  return hours * 60 + minutes;
+}
+
+function unixSecToIstMinutesOfDay(unixSec: number): number {
+  const istSec = ((unixSec + 19800) % 86400 + 86400) % 86400;
+  return istSec / 60;
+}
+
+function cyclicForwardMinutes(fromMin: number, toMin: number): number {
+  let diff = toMin - fromMin;
+  if (diff < -720) diff += 1440;
+  if (diff > 720) diff -= 1440;
+  return diff;
+}
+
+function computeBearingDeg(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const rad = Math.PI / 180;
+  const dLon = (lon2 - lon1) * rad;
+  const y = Math.sin(dLon) * Math.cos(lat2 * rad);
+  const x =
+    Math.cos(lat1 * rad) * Math.sin(lat2 * rad) -
+    Math.sin(lat1 * rad) * Math.cos(lat2 * rad) * Math.cos(dLon);
+  const brng = (Math.atan2(y, x) * 180) / Math.PI;
+  return (brng + 360) % 360;
+}
+
+interface PolylineProjection {
+  alongKm: number;
+  distKm: number;
+}
+
+function projectPointOntoPolyline(
+  lat: number,
+  lon: number,
+  pts: [number, number][],
+  cumKm: number[]
+): PolylineProjection {
+  const kx = 104.5;
+  const ky = 111.0;
+  let bestDist = Infinity;
+  let bestAlong = 0;
+
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const [aLat, aLon] = pts[i];
+    const [bLat, bLon] = pts[i + 1];
+    const px = (lon - aLon) * kx;
+    const py = (lat - aLat) * ky;
+    const vx = (bLon - aLon) * kx;
+    const vy = (bLat - aLat) * ky;
+    const lenSq = vx * vx + vy * vy;
+    const t = lenSq < 1e-9 ? 0 : Math.max(0, Math.min(1, (px * vx + py * vy) / lenSq));
+    const d = Math.hypot(px - t * vx, py - t * vy);
+    if (d < bestDist) {
+      bestDist = d;
+      const segLen = cumKm[i + 1] - cumKm[i];
+      bestAlong = cumKm[i] + t * segLen;
+    }
+  }
+
+  return { alongKm: bestAlong, distKm: bestDist };
+}
+
+function samplePointAtKm(
+  pts: [number, number][],
+  cumKm: number[],
+  targetKm: number,
+  fallbackBearing: number
+): { lat: number; lon: number; bearing: number } {
+  const total = cumKm[cumKm.length - 1] || 0;
+  const clamped = Math.max(0, Math.min(total, targetKm));
+
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const segStart = cumKm[i];
+    const segEnd = cumKm[i + 1];
+    if (clamped <= segEnd || i === pts.length - 2) {
+      const segLen = segEnd - segStart;
+      const t = segLen > 1e-6 ? Math.max(0, Math.min(1, (clamped - segStart) / segLen)) : 0;
+      const lat = pts[i][0] + t * (pts[i + 1][0] - pts[i][0]);
+      const lon = pts[i][1] + t * (pts[i + 1][1] - pts[i][1]);
+      const bearing =
+        segLen > 1e-4
+          ? computeBearingDeg(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1])
+          : fallbackBearing;
+      return { lat, lon, bearing };
+    }
+  }
+
+  const last = pts[pts.length - 1];
+  return { lat: last[0], lon: last[1], bearing: fallbackBearing };
+}
+
+function slicePolylineBetweenKm(
+  pts: [number, number][],
+  cumKm: number[],
+  fromKm: number,
+  toKm: number,
+  startLat: number,
+  startLon: number,
+  endLat: number,
+  endLon: number
+): [number, number][] {
+  const out: [number, number][] = [[startLat, startLon]];
+  for (let i = 0; i < pts.length; i++) {
+    if (cumKm[i] > fromKm + 0.02 && cumKm[i] < toKm - 0.02) {
+      out.push(pts[i]);
+    }
+  }
+  out.push([endLat, endLon]);
+  return out;
+}
+
+function formatGpsOldMinutesText(gpsAgeMinutes: number): string {
+  if (gpsAgeMinutes >= 60) {
+    const hrs = Math.floor(gpsAgeMinutes / 60);
+    const rem = gpsAgeMinutes % 60;
+    const ageStr = rem > 0 ? `${hrs}h ${rem}m` : `${hrs}h`;
+    return `GPS ${ageStr} old — may have moved on`;
+  }
+  return `GPS ${gpsAgeMinutes} min old — may have moved on`;
+}
+
+/**
+ * Estimates where an active on-trip bus may currently be along its route
+ * according to elapsed time since its last GPS fix and upcoming stop schedule.
+ * Returns null if the bus is parked/arrived, off-duty, or GPS is fresh (< 1 min old).
+ */
+export function estimateBusCurrentPosition(
+  bus: LiveBus | null | undefined,
+  nowSec: number = Math.floor(Date.now() / 1000),
+  fallbackRoutePath?: [number, number][]
+): BusEstimatedPosition | null {
+  if (!bus || !bus.isOnTrip || isBusSleeping(bus)) return null;
+  if (!Number.isFinite(bus.timestamp) || bus.timestamp <= 0) return null;
+
+  const gpsAgeSec = Math.max(0, nowSec - bus.timestamp);
+  if (gpsAgeSec < 60) return null; // Fresh GPS (< 1 min old) — no ghost bus needed
+
+  const gpsAgeMinutes = Math.max(1, Math.round(gpsAgeSec / 60));
+  // Ignore severely stale feeds (> 3 hours old) to avoid misleading projections
+  if (gpsAgeMinutes > 180) return null;
+
+  const routePts: [number, number][] =
+    bus.path && bus.path.length >= 2
+      ? bus.path
+      : bus.tripStops && bus.tripStops.length >= 2
+      ? bus.tripStops.map((s) => [s.lat, s.lon] as [number, number])
+      : fallbackRoutePath && fallbackRoutePath.length >= 2
+      ? fallbackRoutePath
+      : [];
+
+  const cappedAgeMin = Math.min(gpsAgeSec / 60, 45);
+  const isHighwayFleet = bus.fleet === 'Shree Jagannath Express' || bus.fleet === 'OSRTC';
+  const defaultFleetSpeed = isHighwayFleet ? 38 : 26;
+  const maxPhysicalSpeedKmh = isHighwayFleet ? 58 : 38;
+  const maxPhysicalAdvanceKm = Math.min(24, maxPhysicalSpeedKmh * (cappedAgeMin / 60));
+
+  // Fallback when route geometry isn't loaded yet: dead-reckon gently along live bearing only if moving
+  if (routePts.length < 2) {
+    if (bus.speedKmh < 6) return null;
+    const speedKmh = Math.max(14, Math.min(maxPhysicalSpeedKmh, bus.speedKmh));
+    const distKm = Math.min(maxPhysicalAdvanceKm, speedKmh * (cappedAgeMin / 60));
+    if (distKm < 0.08) return null;
+    const rad = (bus.bearing * Math.PI) / 180;
+    const estLat = bus.lat + (Math.cos(rad) * distKm) / 111.0;
+    const estLon = bus.lon + (Math.sin(rad) * distKm) / 104.5;
+    return {
+      lat: estLat,
+      lon: estLon,
+      bearing: bus.bearing,
+      gpsAgeMinutes,
+      distanceMovedKm: Number(distKm.toFixed(1)),
+      connectorPath: [
+        [bus.lat, bus.lon],
+        [estLat, estLon]
+      ],
+      estimatedNextStopName: bus.nextStopName || bus.destination || 'Next Stop',
+      method: 'speed',
+      statusText: formatGpsOldMinutesText(gpsAgeMinutes)
+    };
+  }
+
+  // Cumulative road distance along route polyline
+  const cumKm: number[] = [0];
+  for (let i = 1; i < routePts.length; i++) {
+    cumKm.push(
+      cumKm[i - 1] +
+        calculateExactDistanceKm(
+          routePts[i - 1][0],
+          routePts[i - 1][1],
+          routePts[i][0],
+          routePts[i][1]
+        )
+    );
+  }
+  const totalKm = cumKm[cumKm.length - 1];
+  if (totalKm < 0.25) return null;
+
+  const gpsProj = projectPointOntoPolyline(bus.lat, bus.lon, routePts, cumKm);
+  if (gpsProj.alongKm >= totalKm - 0.12) {
+    return null; // Already at route terminus
+  }
+
+  const stops = bus.tripStops || [];
+  const upcomingWithAlong = stops
+    .filter((s) => s.status === 'current' || s.status === 'upcoming')
+    .map((s) => ({
+      stop: s,
+      alongKm: projectPointOntoPolyline(s.lat, s.lon, routePts, cumKm).alongKm,
+      timeMin: parseClockToMinutesOfDay(s.estimatedTime || s.scheduledTime)
+    }))
+    .filter((item) => item.alongKm > gpsProj.alongKm + 0.05)
+    .sort((a, b) => a.alongKm - b.alongKm);
+
+  const gpsIstMin = unixSecToIstMinutesOfDay(bus.timestamp);
+  const nowIstMin = unixSecToIstMinutesOfDay(nowSec);
+
+  let targetAlongKm: number | null = null;
+  let method: 'schedule' | 'speed' = 'speed';
+  let estimatedNextStopName =
+    upcomingWithAlong[0]?.stop.stopName || bus.nextStopName || bus.destination || 'Next Stop';
+
+  // Method A: Schedule / Next-Stop Time Interpolation
+  const firstAhead = upcomingWithAlong[0];
+  if (firstAhead && firstAhead.timeMin !== null) {
+    const minsGpsToFirst = cyclicForwardMinutes(gpsIstMin, firstAhead.timeMin);
+    if (minsGpsToFirst >= 1 && minsGpsToFirst <= 180) {
+      const elapsedMin = gpsAgeSec / 60;
+      if (elapsedMin <= minsGpsToFirst) {
+        // Still between last GPS position and the next scheduled stop
+        const frac = Math.min(0.96, elapsedMin / minsGpsToFirst);
+        targetAlongKm = gpsProj.alongKm + (firstAhead.alongKm - gpsProj.alongKm) * frac;
+        estimatedNextStopName = firstAhead.stop.stopName;
+        method = 'schedule';
+      } else {
+        // Current time has passed the first upcoming stop's ETA — walk subsequent legs!
+        let prevKm = firstAhead.alongKm;
+        let prevTimeMin = firstAhead.timeMin;
+        let placed = false;
+
+        for (let i = 1; i < upcomingWithAlong.length; i++) {
+          const cur = upcomingWithAlong[i];
+          if (cur.timeMin === null) continue;
+          const legDurMin = cyclicForwardMinutes(prevTimeMin, cur.timeMin);
+          if (legDurMin < 1 || legDurMin > 180) continue;
+
+          const pastPrevMin = cyclicForwardMinutes(prevTimeMin, nowIstMin);
+          if (pastPrevMin >= 0 && pastPrevMin <= legDurMin) {
+            const frac = Math.min(0.96, pastPrevMin / legDurMin);
+            targetAlongKm = prevKm + (cur.alongKm - prevKm) * frac;
+            estimatedNextStopName = cur.stop.stopName;
+            method = 'schedule';
+            placed = true;
+            break;
+          }
+          prevKm = cur.alongKm;
+          prevTimeMin = cur.timeMin;
+        }
+
+        if (!placed) {
+          // Past last scheduled stop time in window -> place near remaining route capped by reasonable speed
+          const maxReasonableKm = gpsProj.alongKm + defaultFleetSpeed * (cappedAgeMin / 60);
+          targetAlongKm = Math.min(prevKm, maxReasonableKm);
+          estimatedNextStopName =
+            upcomingWithAlong[upcomingWithAlong.length - 1]?.stop.stopName || estimatedNextStopName;
+          method = 'schedule';
+        }
+      }
+    }
+  }
+
+  // Method B: Speed-based projection along the road polyline (when schedule is absent or bus is behind schedule)
+  if (targetAlongKm === null) {
+    const speedKmh =
+      bus.speedKmh >= 10 ? Math.max(14, Math.min(maxPhysicalSpeedKmh, bus.speedKmh)) : defaultFleetSpeed;
+    const advanceKm = speedKmh * (cappedAgeMin / 60);
+    targetAlongKm = Math.min(totalKm - 0.05, gpsProj.alongKm + advanceKm);
+    method = 'speed';
+  }
+
+  // Enforce physical road-speed cap so noisy timetables never teleport the faded bus 40+ km away
+  const maxAllowedAlongKm = Math.min(totalKm - 0.04, gpsProj.alongKm + maxPhysicalAdvanceKm);
+  targetAlongKm = Math.max(gpsProj.alongKm, Math.min(maxAllowedAlongKm, targetAlongKm));
+
+  // Always pick the first upcoming stop strictly ahead of the final estimated position
+  const nextAfterEst = upcomingWithAlong.find((u) => u.alongKm > targetAlongKm! + 0.05);
+  if (nextAfterEst) {
+    estimatedNextStopName = nextAfterEst.stop.stopName;
+  }
+
+  const movedKm = targetAlongKm - gpsProj.alongKm;
+  if (movedKm < 0.06) return null;
+
+  const sampled = samplePointAtKm(routePts, cumKm, targetAlongKm, bus.bearing);
+  const connectorPath = slicePolylineBetweenKm(
+    routePts,
+    cumKm,
+    gpsProj.alongKm,
+    targetAlongKm,
+    bus.lat,
+    bus.lon,
+    sampled.lat,
+    sampled.lon
+  );
+
+  return {
+    lat: sampled.lat,
+    lon: sampled.lon,
+    bearing: sampled.bearing,
+    gpsAgeMinutes,
+    distanceMovedKm: Number(movedKm.toFixed(1)),
+    connectorPath,
+    estimatedNextStopName,
+    method,
+    statusText: formatGpsOldMinutesText(gpsAgeMinutes)
+  };
 }
 
 export function getInitialDataset() {

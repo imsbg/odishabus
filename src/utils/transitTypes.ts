@@ -77,6 +77,18 @@ export interface LiveBus {
   path?: [number, number][];
 }
 
+export interface BusEstimatedPosition {
+  lat: number;
+  lon: number;
+  bearing: number;
+  gpsAgeMinutes: number;
+  distanceMovedKm: number;
+  connectorPath: [number, number][];
+  estimatedNextStopName: string;
+  method: 'schedule' | 'speed';
+  statusText: string;
+}
+
 export interface FeedStatus {
   network: string;
   feedTime: number;

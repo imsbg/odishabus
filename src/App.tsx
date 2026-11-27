@@ -26,6 +26,7 @@ import {
 } from './utils/clientOsrtcLoader';
 import {
   addHistoryEntry,
+  estimateBusCurrentPosition,
   filterBusesByMapBounds,
   filterLiveBuses,
   filterRoutes,
@@ -1253,6 +1254,7 @@ export default function App() {
             onBoundsChange={setMapBounds}
             isDark={isDark}
             focusCoords={focusCoords}
+            feedTime={feedStatus.feedTime}
           />
         </section>
 
@@ -1264,38 +1266,49 @@ export default function App() {
               onClick={() => setMobilePanel('details')}
               className="w-full p-3 rounded-2xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200/90 dark:border-slate-800 shadow-xl flex items-center justify-between gap-3 text-left transition-transform active:scale-[0.99]"
             >
-              {selectedBus && (
-                <>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5 text-xs">
-                      <span
-                        aria-hidden="true"
-                        className="w-2.5 h-2.5 rounded-full shrink-0"
-                        style={{ backgroundColor: FLEET_SWATCH_COLORS[selectedBus.fleet] || '#64748b' }}
-                      />
-                      <span className="font-bold font-mono tabular-nums text-slate-900 dark:text-white">
-                        {selectedBus.registrationNumber}
-                      </span>
-                      <span aria-hidden="true" className="text-slate-300 dark:text-slate-600">·</span>
-                      <span className="font-mono tabular-nums font-semibold text-orange-600 dark:text-orange-400">
-                        {selectedBus.routeNumber}
-                      </span>
+              {selectedBus && (() => {
+                const mobileEst = estimateBusCurrentPosition(
+                  selectedBus,
+                  feedStatus.feedTime > 0 ? feedStatus.feedTime : Math.floor(Date.now() / 1000)
+                );
+                return (
+                  <>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 text-xs">
+                        <span
+                          aria-hidden="true"
+                          className="w-2.5 h-2.5 rounded-full shrink-0"
+                          style={{ backgroundColor: FLEET_SWATCH_COLORS[selectedBus.fleet] || '#64748b' }}
+                        />
+                        <span className="font-bold font-mono tabular-nums text-slate-900 dark:text-white">
+                          {selectedBus.registrationNumber}
+                        </span>
+                        <span aria-hidden="true" className="text-slate-300 dark:text-slate-600">·</span>
+                        <span className="font-mono tabular-nums font-semibold text-orange-600 dark:text-orange-400">
+                          {selectedBus.routeNumber}
+                        </span>
+                      </div>
+                      <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate mt-0.5">
+                        {selectedBus.routeName}
+                      </div>
+                      <div className="text-[11px] font-mono tabular-nums text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                        {selectedBus.speedKmh > 0 ? `${selectedBus.speedKmh} km/h` : 'Stationary'}
+                        {selectedBus.nextStopName ? ` · Next: ${selectedBus.nextStopName}` : ''}
+                        {selectedBus.nextStopEta !== '--:--' ? ` (${formatTime12Hour(selectedBus.nextStopEta)})` : ''}
+                      </div>
+                      {mobileEst && (
+                        <div className="text-[11px] font-semibold text-amber-700 dark:text-amber-300 truncate mt-0.5">
+                          {mobileEst.statusText}
+                        </div>
+                      )}
                     </div>
-                    <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate mt-0.5">
-                      {selectedBus.routeName}
-                    </div>
-                    <div className="text-[11px] font-mono tabular-nums text-slate-500 dark:text-slate-400 truncate mt-0.5">
-                      {selectedBus.speedKmh > 0 ? `${selectedBus.speedKmh} km/h` : 'Stationary'}
-                      {selectedBus.nextStopName ? ` · Next: ${selectedBus.nextStopName}` : ''}
-                      {selectedBus.nextStopEta !== '--:--' ? ` (${formatTime12Hour(selectedBus.nextStopEta)})` : ''}
-                    </div>
-                  </div>
-                  <span className="inline-flex items-center gap-1 px-3 min-h-[40px] rounded-xl bg-orange-600 text-white text-xs font-semibold shrink-0">
-                    <span>Timeline</span>
-                    <ChevronUp className="w-3.5 h-3.5" />
-                  </span>
-                </>
-              )}
+                    <span className="inline-flex items-center gap-1 px-3 min-h-[40px] rounded-xl bg-orange-600 text-white text-xs font-semibold shrink-0">
+                      <span>Timeline</span>
+                      <ChevronUp className="w-3.5 h-3.5" />
+                    </span>
+                  </>
+                );
+              })()}
 
               {!selectedBus && selectedRoad && (
                 <>
@@ -1379,6 +1392,7 @@ export default function App() {
           onFocusCoords={handleFocusCoords}
           onSelectBus={(bus) => handleSelectBus(bus, true)}
           onSelectRoute={handleSelectRoute}
+          feedTime={feedStatus.feedTime}
         />
       </main>
 

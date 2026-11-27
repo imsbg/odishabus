@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Check, Copy, LocateFixed, Map as MapIcon, Route as RouteIcon, X } from 'lucide-react';
+import { Check, Clock, Copy, LocateFixed, Map as MapIcon, Route as RouteIcon, X } from 'lucide-react';
 import {
   BusRoute,
   BusStop,
@@ -9,6 +9,7 @@ import {
 } from '../utils/transitTypes';
 import { CoachLiverySvg } from './CoachLiverySvg';
 import {
+  estimateBusCurrentPosition,
   estimateFareInr,
   formatTime12Hour,
   getStopRoutesAndBuses,
@@ -32,6 +33,7 @@ interface BusDetailPanelProps {
   onFocusCoords: (lat: number, lon: number, zoom?: number) => void;
   onSelectBus: (bus: LiveBus) => void;
   onSelectRoute: (route: BusRoute) => void;
+  feedTime?: number;
 }
 
 export const BusDetailPanel: React.FC<BusDetailPanelProps> = ({
@@ -50,11 +52,40 @@ export const BusDetailPanel: React.FC<BusDetailPanelProps> = ({
   onClose,
   onFocusCoords,
   onSelectBus,
-  onSelectRoute
+  onSelectRoute,
+  feedTime = 0
 }) => {
   const [copiedLink, setCopiedLink] = useState(false);
+  const [clockSec, setClockSec] = useState<number>(() =>
+    feedTime > 0 ? feedTime : Math.floor(Date.now() / 1000)
+  );
+  const feedAnchorRef = useRef<{ feedTime: number; localMs: number }>({
+    feedTime,
+    localMs: Date.now()
+  });
   const timelineContainerRef = useRef<HTMLDivElement | null>(null);
   const nextStopItemRef = useRef<HTMLLIElement | null>(null);
+
+  useEffect(() => {
+    feedAnchorRef.current = { feedTime, localMs: Date.now() };
+    setClockSec(feedTime > 0 ? feedTime : Math.floor(Date.now() / 1000));
+  }, [feedTime]);
+
+  useEffect(() => {
+    if (!selectedBus) return;
+    const computeRefNow = () => {
+      const anchor = feedAnchorRef.current;
+      if (anchor.feedTime > 0) {
+        return anchor.feedTime + Math.max(0, Math.floor((Date.now() - anchor.localMs) / 1000));
+      }
+      return Math.floor(Date.now() / 1000);
+    };
+    setClockSec(computeRefNow());
+    const timer = window.setInterval(() => {
+      setClockSec(computeRefNow());
+    }, 30_000);
+    return () => window.clearInterval(timer);
+  }, [selectedBus?.registrationNumber, feedTime]);
 
   // Auto-scroll timeline directly to the next station so the user sees it immediately without scrolling
   useEffect(() => {
@@ -109,6 +140,34 @@ export const BusDetailPanel: React.FC<BusDetailPanelProps> = ({
     const sleeping = isBusSleeping(selectedBus);
     const arrivedAtEnd =
       stops.length > 0 && stops.every((s) => s.status === 'passed' || s.status === 'skipped');
+    const matchedRoute =
+      (!selectedBus.path || selectedBus.path.length < 2) && stops.length < 2
+        ? allRoutes.find(
+            (r) =>
+              (selectedBus.serviceKey && r.serviceKey === selectedBus.serviceKey) ||
+              (selectedBus.routeNumber &&
+                selectedBus.routeNumber !== 'OFF DUTY' &&
+                r.routeNumber.toUpperCase() === selectedBus.routeNumber.toUpperCase())
+          )
+        : undefined;
+    const fallbackRoutePath =
+      matchedRoute?.path && matchedRoute.path.length >= 2
+        ? matchedRoute.path
+        : matchedRoute && matchedRoute.stops.length >= 2
+        ? matchedRoute.stops.map((s) => [s.lat, s.lon] as [number, number])
+        : undefined;
+    const estimatedPos = estimateBusCurrentPosition(selectedBus, clockSec, fallbackRoutePath);
+    const gpsAgeMin =
+      Number.isFinite(selectedBus.timestamp) && selectedBus.timestamp > 0
+        ? Math.max(0, Math.round((clockSec - selectedBus.timestamp) / 60))
+        : 0;
+    const staleGpsNotice =
+      !sleeping && selectedBus.isOnTrip && gpsAgeMin >= 1
+        ? estimatedPos?.statusText ||
+          (gpsAgeMin >= 60
+            ? `GPS ${Math.floor(gpsAgeMin / 60)}h ${gpsAgeMin % 60}m old — may have moved on`
+            : `GPS ${gpsAgeMin} min old — may have moved on`)
+        : null;
 
     const speedLabel =
       selectedBus.speedKmh > 0
@@ -236,6 +295,42 @@ export const BusDetailPanel: React.FC<BusDetailPanelProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Stale GPS Notice + Faded Estimated Bus Position Callout */}
+        {staleGpsNotice && (
+          <div
+            role="status"
+            data-testid="gps-estimated-notice"
+            className="px-4 py-2.5 border-b border-amber-200/90 dark:border-amber-900/60 bg-amber-50/90 dark:bg-amber-950/35 flex items-start justify-between gap-2.5 shrink-0"
+          >
+            <div className="flex items-start gap-2 min-w-0">
+              <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <div className="text-xs font-semibold text-amber-900 dark:text-amber-200 leading-snug">
+                  {staleGpsNotice}
+                </div>
+                {estimatedPos && (
+                  <p className="text-[11px] text-amber-800/90 dark:text-amber-300/90 mt-0.5 leading-snug">
+                    Faded bus on map shows where it may be now (~{estimatedPos.distanceMovedKm} km
+                    ahead toward <span className="font-semibold">{estimatedPos.estimatedNextStopName}</span>).
+                  </p>
+                )}
+              </div>
+            </div>
+            {estimatedPos && (
+              <button
+                type="button"
+                onClick={() => {
+                  onFocusCoords(estimatedPos.lat, estimatedPos.lon, 13.5);
+                  onShowMapMobile();
+                }}
+                className="px-2.5 py-1.5 text-[11px] font-semibold rounded-lg bg-amber-600 hover:bg-amber-500 text-white whitespace-nowrap shrink-0 transition-colors"
+              >
+                Show Est.
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Immediate Next Station / Arrived End Summary Banner (Visible without scrolling) */}
         {stops.length > 0 && (
