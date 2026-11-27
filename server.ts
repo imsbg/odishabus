@@ -709,6 +709,125 @@ async function createServer() {
     }
   });
 
+  // 6. Full un-capped per-stop schedule (every scheduled departure passing a stop, including Mahuli -> Kusumajodi mirror)
+  app.get('/api/osrtc/stop-schedule/:stopId', async (req, res) => {
+    try {
+      const stopId = String(req.params.stopId || '').trim();
+      const queryName = String(req.query.name || '').trim();
+      const mirrorName =
+        String(req.query.mirror || '').trim() ||
+        (stopId === 'custom-mahuli' ? 'Kusumajodi' : '');
+
+      const net = await getNetworkGeometryIndex();
+      const targetStopIds = new Set<string>();
+      let resolvedStopName = queryName;
+
+      if (mirrorName) {
+        const needle = mirrorName.toLowerCase();
+        for (const [sid, tuple] of Object.entries(net.stops)) {
+          if (!Array.isArray(tuple) || !tuple[0]) continue;
+          if (String(tuple[0]).toLowerCase() === needle) {
+            targetStopIds.add(sid);
+            resolvedStopName = replaceCuttackWithKataka(String(tuple[0]));
+          }
+        }
+        if (targetStopIds.size === 0) {
+          for (const [sid, tuple] of Object.entries(net.stops)) {
+            if (!Array.isArray(tuple) || !tuple[0]) continue;
+            if (String(tuple[0]).toLowerCase().includes(needle)) {
+              targetStopIds.add(sid);
+              if (!resolvedStopName) resolvedStopName = replaceCuttackWithKataka(String(tuple[0]));
+            }
+          }
+        }
+      } else if (stopId && net.stops[stopId]) {
+        targetStopIds.add(stopId);
+        resolvedStopName = replaceCuttackWithKataka(String(net.stops[stopId][0] || queryName));
+      } else if (queryName) {
+        const needle = queryName.toLowerCase();
+        for (const [sid, tuple] of Object.entries(net.stops)) {
+          if (!Array.isArray(tuple) || !tuple[0]) continue;
+          const nm = replaceCuttackWithKataka(String(tuple[0])).toLowerCase();
+          if (nm === needle) {
+            targetStopIds.add(sid);
+            resolvedStopName = replaceCuttackWithKataka(String(tuple[0]));
+          }
+        }
+      }
+
+      const outgoing: any[] = [];
+      const terminatingFallback: any[] = [];
+      const seenKeys = new Set<string>();
+
+      for (const [serviceKey, v] of Object.entries(net.services)) {
+        if (!Array.isArray(v) || !Array.isArray(v[6]) || v[6].length < 2) continue;
+        const stopIds: string[] = v[6];
+        const stopIdx = stopIds.findIndex((sid) => targetStopIds.has(String(sid)));
+        if (stopIdx < 0) continue;
+
+        const routeNumber = String(v[0] || '').trim();
+        const typeName = net.types[Number(v[1])] || 'OSRTC';
+        const isCity = serviceKey.startsWith('k');
+        const cityName = isCity ? replaceCuttackWithKataka(String(v[2] || '')) : '';
+        const originDep = String(v[3] || '');
+        const origin = replaceCuttackWithKataka(String(v[4] || ''));
+        const destination = replaceCuttackWithKataka(String(v[5] || ''));
+        const times: string[] = Array.isArray(v[7]) ? v[7] : [];
+        const departureTime = String(times[stopIdx] || (stopIdx === 0 ? originDep : '') || '--:--').trim();
+
+        const stopPoints = stopIds
+          .map((sid, idx) => {
+            const st = net.stops[sid];
+            if (!st) return null;
+            return {
+              stopId: sid,
+              stopName: replaceCuttackWithKataka(st[0]),
+              lat: st[1],
+              lon: st[2],
+              scheduledTime: String(times[idx] || '--:--'),
+              sequence: idx + 1
+            };
+          })
+          .filter(Boolean);
+
+        if (stopPoints.length < 2) continue;
+
+        const entry = {
+          serviceKey,
+          routeNumber,
+          typeName,
+          cityName,
+          origin,
+          destination,
+          departureTime,
+          originDepartureTime: originDep || departureTime,
+          stopIndex: stopIdx,
+          stops: stopPoints
+        };
+
+        const dedupeKey = `${routeNumber}|${destination}|${departureTime}`;
+        if (stopIdx < stopIds.length - 1) {
+          if (seenKeys.has(dedupeKey)) continue;
+          seenKeys.add(dedupeKey);
+          outgoing.push(entry);
+        } else {
+          terminatingFallback.push(entry);
+        }
+      }
+
+      const finalDepartures = outgoing.length > 0 ? outgoing : terminatingFallback;
+      res.setHeader('Cache-Control', 'public, max-age=300');
+      res.json({
+        stopId,
+        stopName: resolvedStopName || queryName || stopId,
+        resolvedStopIds: Array.from(targetStopIds),
+        departures: finalDepartures
+      });
+    } catch {
+      res.status(502).json({ error: 'Unable to load stop schedule' });
+    }
+  });
+
   if (!IS_PROD) {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({

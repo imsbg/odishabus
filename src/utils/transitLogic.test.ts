@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   addHistoryEntry,
+  buildStopPanelData,
   calculateVehicleSpeed,
   classifyFleetCategory,
   decodeGtfsStopId,
@@ -21,7 +22,8 @@ import {
   parseGtfsRealtimePayload,
   parseLiveTripDetail,
   replaceCuttackWithKataka,
-  searchStops
+  searchStops,
+  toDisplayRouteCode
 } from './transitLogic';
 import { CUSTOM_BUS_STOPS, mergeCustomBusStops } from './customStops';
 
@@ -378,6 +380,151 @@ test('findBestLiveBusOrRouteForDeepLink selects active live bus on route/corrido
   assert.equal(res2.bus, null);
   assert.equal(res2.route?.routeNumber, 'CTC0001U');
 });
+
+test('toDisplayRouteCode strips U/D direction suffixes while keeping numeric city codes', () => {
+  assert.equal(toDisplayRouteCode('KAM0001U'), 'KAM0001');
+  assert.equal(toDisplayRouteCode('KAM0001D'), 'KAM0001');
+  assert.equal(toDisplayRouteCode('JE_0204U'), 'JE_0204');
+  assert.equal(toDisplayRouteCode('50'), '50');
+  assert.equal(toDisplayRouteCode('16A'), '16A');
+});
+
+test('buildStopPanelData groups U/D routes, attaches live bus numbers & 90-min arrivals, and mirrors Mahuli to Kusumajodi', () => {
+  const kusuStop = {
+    id: 'nkusumajodi2082185536',
+    name: 'Kusumajodi',
+    district: 'Odisha Bus Network',
+    lat: 20.82094,
+    lon: 85.53601
+  };
+  const mahuliStop = {
+    id: 'custom-mahuli',
+    name: 'Mahuli',
+    district: 'Odisha Bus Network',
+    lat: 20.833643,
+    lon: 85.530248,
+    mirrorStopName: 'Kusumajodi'
+  };
+
+  const scheduleDepartures = [
+    {
+      serviceKey: '5731',
+      routeNumber: 'KAM0001D',
+      displayRouteCode: 'KAM0001',
+      fleet: 'Mukhyamantri Bus Seva' as const,
+      origin: 'Sogar',
+      destination: 'Kamakhyanagar Dkl',
+      departureTime: '07:52',
+      originDepartureTime: '07:25',
+      stopIndex: 1,
+      stops: [
+        { stopId: 'nsogar', stopName: 'Sogar', lat: 20.8, lon: 85.5, scheduledTime: '07:25', status: 'passed' as const, sequence: 1 },
+        { stopId: 'nkusumajodi2082185536', stopName: 'Kusumajodi', lat: 20.82094, lon: 85.53601, scheduledTime: '07:52', status: 'upcoming' as const, sequence: 2 },
+        { stopId: 'nkamak', stopName: 'Kamakhyanagar Dkl', lat: 20.93, lon: 85.55, scheduledTime: '08:17', status: 'upcoming' as const, sequence: 3 }
+      ]
+    },
+    {
+      serviceKey: '931',
+      routeNumber: 'KAM0001U',
+      displayRouteCode: 'KAM0001',
+      fleet: 'Mukhyamantri Bus Seva' as const,
+      origin: 'Kamakhyanagar Dkl',
+      destination: 'Sogar',
+      departureTime: '06:26',
+      originDepartureTime: '05:55',
+      stopIndex: 1,
+      stops: [
+        { stopId: 'nkamak', stopName: 'Kamakhyanagar Dkl', lat: 20.93, lon: 85.55, scheduledTime: '05:55', status: 'passed' as const, sequence: 1 },
+        { stopId: 'nkusumajodi2082185536', stopName: 'Kusumajodi', lat: 20.82094, lon: 85.53601, scheduledTime: '06:26', status: 'upcoming' as const, sequence: 2 },
+        { stopId: 'nsogar', stopName: 'Sogar', lat: 20.8, lon: 85.5, scheduledTime: '06:50', status: 'upcoming' as const, sequence: 3 }
+      ]
+    }
+  ];
+
+  // Clock set to 06:10 IST (00:40 UTC on 2026-06-01)
+  const clock0610Ist = Math.floor(Date.UTC(2026, 5, 1, 0, 40, 0) / 1000);
+  const liveBus: any = {
+    id: 'v-931',
+    registrationNumber: 'OD06M9141',
+    fleet: 'Mukhyamantri Bus Seva',
+    routeId: 'KAM0001U',
+    serviceKey: '931',
+    routeNumber: 'KAM0001U',
+    routeName: 'Kamakhyanagar Dkl → Sogar',
+    origin: 'Kamakhyanagar Dkl',
+    destination: 'Sogar',
+    lat: 20.88,
+    lon: 85.54,
+    bearing: 180,
+    speedKmh: 36,
+    gpsAgeLabel: '1m ago',
+    timestamp: clock0610Ist - 60,
+    depot: 'Dhenkanal',
+    isOnTrip: true,
+    nextStopName: 'Kusumajodi',
+    nextStopEta: '06:26',
+    lastStopName: 'Kamakhyanagar Dkl',
+    tripStops: [
+      { stopId: 'nkusumajodi2082185536', stopName: 'Kusumajodi', lat: 20.82094, lon: 85.53601, scheduledTime: '06:26', estimatedTime: '06:26', status: 'current', sequence: 2 }
+    ]
+  };
+
+  const kusuPanel = buildStopPanelData(
+    kusuStop,
+    scheduleDepartures,
+    ['nkusumajodi2082185536'],
+    [kusuStop, mahuliStop],
+    [],
+    [liveBus],
+    clock0610Ist
+  );
+
+  // 1 grouped route ("KAM0001"), 2 chronological departures (06:26 then 07:52)
+  assert.equal(kusuPanel.routeCount, 1);
+  assert.equal(kusuPanel.routesPassingHere[0].displayRouteCode, 'KAM0001');
+  assert.equal(kusuPanel.departures.length, 2);
+  assert.equal(kusuPanel.departures[0].departureTime, '06:26');
+  assert.equal(kusuPanel.departures[0].destination, 'Sogar');
+  assert.equal(kusuPanel.departures[0].isLiveNow, true);
+  assert.equal(kusuPanel.departures[0].exactServiceLiveBuses[0].registrationNumber, 'OD06M9141');
+  assert.equal(kusuPanel.departures[1].departureTime, '07:52');
+  assert.equal(kusuPanel.departures[1].destination, 'Kamakhyanagar DKL');
+
+  // Live arrival due in 16 minutes (within next 90 min)
+  assert.equal(kusuPanel.liveArrivals.length, 1);
+  assert.equal(kusuPanel.liveArrivals[0].registrationNumber, 'OD06M9141');
+  assert.equal(kusuPanel.liveArrivals[0].fleet, 'Mukhyamantri Bus Seva');
+  assert.equal(kusuPanel.liveArrivals[0].etaMinutes, 16);
+
+  // Mahuli mirrors Kusumajodi identically
+  const mahuliPanel = buildStopPanelData(
+    mahuliStop,
+    scheduleDepartures,
+    ['nkusumajodi2082185536'],
+    [kusuStop, mahuliStop],
+    [],
+    [liveBus],
+    clock0610Ist
+  );
+  assert.equal(mahuliPanel.routeCount, 1);
+  assert.equal(mahuliPanel.departures.length, 2);
+  assert.equal(mahuliPanel.liveArrivals.length, 1);
+  assert.equal(mahuliPanel.liveArrivals[0].registrationNumber, 'OD06M9141');
+
+  // Outside 90-minute window (at 11:00 IST), liveArrivals should be empty
+  const clock1100Ist = Math.floor(Date.UTC(2026, 5, 1, 5, 30, 0) / 1000);
+  const laterPanel = buildStopPanelData(
+    kusuStop,
+    scheduleDepartures,
+    ['nkusumajodi2082185536'],
+    [kusuStop, mahuliStop],
+    [],
+    [{ ...liveBus, timestamp: clock1100Ist - 60 }],
+    clock1100Ist
+  );
+  assert.equal(laterPanel.liveArrivals.length, 0);
+});
+
 
 
 

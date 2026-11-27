@@ -4,6 +4,7 @@ import {
   BusRoute,
   BusStop,
   DirectJourneyMatch,
+  EnrichedStopDeparture,
   FeedStatus,
   FleetCategory,
   FleetFilter,
@@ -11,7 +12,11 @@ import {
   LiveBus,
   MapViewportBounds,
   RouteStopTiming,
-  StopPassState
+  StopLiveArrivalItem,
+  StopPanelData,
+  StopPassState,
+  StopRouteBadgeItem,
+  StopScheduleDeparture
 } from './transitTypes';
 
 /**
@@ -1311,6 +1316,300 @@ export function findBestLiveBusOrRouteForDeepLink(
   }
 
   return { bus: bestBus, route: matchedRoute };
+}
+
+/**
+ * Normalizes a route code for compact badge display by stripping directional
+ * U/D suffixes (e.g. "KAM0001U" -> "KAM0001", "BSR0038D" -> "BSR0038") while
+ * preserving numeric and city codes like "50", "17", "16A".
+ */
+export function toDisplayRouteCode(routeNumber?: string | null): string {
+  const raw = String(routeNumber || '').trim().toUpperCase();
+  if (!raw) return '';
+  const match = /^([A-Z0-9_-]*\d)[UD]$/i.exec(raw);
+  return match ? match[1].toUpperCase() : raw;
+}
+
+function buildRouteObjectFromDeparture(
+  dep: StopScheduleDeparture,
+  existingRoutes: BusRoute[]
+): BusRoute {
+  const existing = existingRoutes.find(
+    (r) =>
+      (dep.serviceKey && r.serviceKey === dep.serviceKey) ||
+      (r.routeNumber.trim().toUpperCase() === dep.routeNumber.trim().toUpperCase() &&
+        r.destination.toLowerCase() === dep.destination.toLowerCase())
+  );
+  if (existing) return existing;
+
+  const first = dep.stops[0];
+  const last = dep.stops[dep.stops.length - 1];
+  const distKm =
+    first && last ? calculateDistanceKm(first.lat, first.lon, last.lat, last.lon) : 15;
+  const origin = formatTitleCase(dep.origin || first?.stopName || 'Origin');
+  const destination = formatTitleCase(dep.destination || last?.stopName || 'Destination');
+
+  return {
+    id: dep.serviceKey || `${dep.routeNumber}-${dep.departureTime}`,
+    serviceKey: dep.serviceKey,
+    routeNumber: dep.routeNumber,
+    name: `${origin} → ${destination}`,
+    origin,
+    destination,
+    fleet: dep.fleet,
+    corridor: dep.cityName
+      ? `${replaceCuttackWithKataka(dep.cityName)} City Transit`
+      : 'Odisha Intercity Network',
+    distanceKm: distKm,
+    durationLabel: `${Math.max(20, Math.round(distKm * 1.4))}m`,
+    departures: dep.originDepartureTime ? [dep.originDepartureTime] : [dep.departureTime],
+    stops: dep.stops,
+    path: dep.stops.map((s) => [s.lat, s.lon] as [number, number])
+  };
+}
+
+function normalizeStopNameKey(name?: string | null): string {
+  return replaceCuttackWithKataka(String(name || ''))
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+/**
+ * Builds the complete stop details payload:
+ * - `liveArrivals`: real tracked buses due at this stop within the next 90 minutes
+ * - `routesPassingHere`: deduplicated route badges (grouping U/D pairs cleanly)
+ * - `departures`: chronologically sorted real departures with live bus numbers & full stops
+ */
+export function buildStopPanelData(
+  stop: BusStop,
+  scheduleDepartures: StopScheduleDeparture[] | null,
+  resolvedStopIds: string[] | null,
+  allStops: BusStop[],
+  allRoutes: BusRoute[],
+  allBuses: LiveBus[],
+  clockSec: number = Math.floor(Date.now() / 1000)
+): StopPanelData {
+  const referenceStop = stop.mirrorStopName
+    ? allStops.find((s) =>
+        s.name.toLowerCase().includes(stop.mirrorStopName!.toLowerCase())
+      ) || {
+        ...stop,
+        id: `mirror-${stop.mirrorStopName.toLowerCase()}`,
+        name: stop.mirrorStopName
+      }
+    : stop;
+
+  const targetStopIds = new Set<string>([
+    referenceStop.id,
+    ...(resolvedStopIds || [])
+  ]);
+  const refNameKey = normalizeStopNameKey(referenceStop.name);
+  const refFirstToken = refNameKey.split(' ')[0] || '';
+
+  // Build fallback departures from loaded `allRoutes` if dedicated stop schedule hasn't arrived yet
+  let baseDepartures: StopScheduleDeparture[];
+  if (scheduleDepartures !== null) {
+    baseDepartures = scheduleDepartures;
+  } else {
+    const { routesServingStop } = getStopRoutesAndBuses(stop, allStops, allRoutes, allBuses);
+    baseDepartures = routesServingStop
+      .map((r) => {
+        const stopIdx = r.stops.findIndex(
+          (s) =>
+            targetStopIds.has(s.stopId) ||
+            (refFirstToken.length >= 3 &&
+              normalizeStopNameKey(s.stopName).includes(refFirstToken))
+        );
+        if (stopIdx < 0) return null;
+        return {
+          serviceKey: r.serviceKey || r.id,
+          routeNumber: r.routeNumber,
+          displayRouteCode: toDisplayRouteCode(r.routeNumber) || r.routeNumber,
+          fleet: r.fleet,
+          origin: r.origin,
+          destination: r.destination,
+          departureTime: r.stops[stopIdx]?.scheduledTime || r.departures[0] || '--:--',
+          originDepartureTime: r.departures[0] || r.stops[0]?.scheduledTime || '--:--',
+          stopIndex: stopIdx,
+          stops: r.stops
+        } as StopScheduleDeparture;
+      })
+      .filter((item): item is StopScheduleDeparture => Boolean(item));
+  }
+
+  // Sort departures chronologically by time-of-day
+  const sortedDepartures = [...baseDepartures].sort((a, b) => {
+    const am = parseClockToMinutesOfDay(a.departureTime);
+    const bm = parseClockToMinutesOfDay(b.departureTime);
+    if (am !== null && bm !== null && am !== bm) return am - bm;
+    if (am !== null && bm === null) return -1;
+    if (am === null && bm !== null) return 1;
+    return a.displayRouteCode.localeCompare(b.displayRouteCode);
+  });
+
+  // Pre-index on-trip buses by serviceKey, exact routeNumber, and displayRouteCode
+  const onTripBuses = allBuses.filter((b) => b.isOnTrip);
+  const sortLiveBusesPriority = (list: LiveBus[]): LiveBus[] =>
+    [...list].sort((a, b) => {
+      const aSleep = isBusSleeping(a) ? 1 : 0;
+      const bSleep = isBusSleeping(b) ? 1 : 0;
+      if (aSleep !== bSleep) return aSleep - bSleep;
+      if (b.speedKmh !== a.speedKmh) return b.speedKmh - a.speedKmh;
+      return a.registrationNumber.localeCompare(b.registrationNumber);
+    });
+
+  // Enrich each departure with matching live buses (registration numbers) & Route object
+  const departures: EnrichedStopDeparture[] = sortedDepartures.map((dep, idx) => {
+    const depRouteUpper = dep.routeNumber.trim().toUpperCase();
+    const depDisplayUpper = (dep.displayRouteCode || toDisplayRouteCode(dep.routeNumber)).toUpperCase();
+
+    const exactMatches = sortLiveBusesPriority(
+      onTripBuses.filter(
+        (b) =>
+          (dep.serviceKey && b.serviceKey && b.serviceKey === dep.serviceKey) ||
+          (depRouteUpper && b.routeNumber.trim().toUpperCase() === depRouteUpper)
+      )
+    );
+
+    const exactRegSet = new Set(exactMatches.map((b) => b.registrationNumber));
+    const relatedMatches = sortLiveBusesPriority(
+      onTripBuses.filter(
+        (b) =>
+          !exactRegSet.has(b.registrationNumber) &&
+          depDisplayUpper.length > 0 &&
+          toDisplayRouteCode(b.routeNumber) === depDisplayUpper
+      )
+    );
+
+    const hasActiveNonSleeping = exactMatches.some((b) => !isBusSleeping(b));
+
+    return {
+      ...dep,
+      id: `${dep.serviceKey || dep.routeNumber}-${dep.departureTime}-${idx}`,
+      displayRouteCode: depDisplayUpper || dep.routeNumber,
+      origin: formatTitleCase(dep.origin),
+      destination: formatTitleCase(dep.destination),
+      isLiveNow: hasActiveNonSleeping || exactMatches.length > 0,
+      exactServiceLiveBuses: exactMatches,
+      relatedRouteLiveBuses: relatedMatches,
+      routeObj: buildRouteObjectFromDeparture(dep, allRoutes)
+    };
+  });
+
+  // Group deduplicated route badges for "ROUTES PASSING HERE"
+  const routeBadgeMap = new Map<string, StopRouteBadgeItem>();
+  for (const dep of departures) {
+    const code = dep.displayRouteCode || dep.routeNumber;
+    const key = `${code}|${dep.fleet}`;
+    const existing = routeBadgeMap.get(key);
+    const liveRegs = new Set([
+      ...dep.exactServiceLiveBuses.map((b) => b.registrationNumber),
+      ...dep.relatedRouteLiveBuses.map((b) => b.registrationNumber)
+    ]);
+    if (!existing) {
+      routeBadgeMap.set(key, {
+        displayRouteCode: code,
+        fleet: dep.fleet,
+        representativeRoute: dep.routeObj,
+        departuresCount: 1,
+        liveBusCount: liveRegs.size
+      });
+    } else {
+      existing.departuresCount += 1;
+      existing.liveBusCount = Math.max(existing.liveBusCount, liveRegs.size);
+    }
+  }
+
+  const routesPassingHere = Array.from(routeBadgeMap.values()).sort((a, b) => {
+    if (b.liveBusCount !== a.liveBusCount) return b.liveBusCount - a.liveBusCount;
+    return a.displayRouteCode.localeCompare(b.displayRouteCode, undefined, { numeric: true });
+  });
+
+  // Compute "LIVE ARRIVALS · NEXT 90 MIN"
+  const nowIstMin = unixSecToIstMinutesOfDay(clockSec);
+  const arrivalsByReg = new Map<string, StopLiveArrivalItem>();
+
+  const matchesThisStop = (stopId?: string, stopName?: string): boolean => {
+    if (stopId && targetStopIds.has(stopId)) return true;
+    const norm = normalizeStopNameKey(stopName);
+    if (!norm || !refNameKey) return false;
+    if (norm === refNameKey) return true;
+    return refNameKey.length >= 4 && (norm.includes(refNameKey) || refNameKey.includes(norm));
+  };
+
+  // Pass 1: Direct GTFS-RT upcoming stop ETAs on live buses
+  for (const bus of onTripBuses) {
+    if (isBusSleeping(bus)) continue;
+    const upcomingStop = bus.tripStops.find(
+      (s) =>
+        (s.status === 'current' || s.status === 'upcoming') &&
+        matchesThisStop(s.stopId, s.stopName)
+    );
+    if (!upcomingStop) continue;
+    const etaStr = upcomingStop.estimatedTime || upcomingStop.scheduledTime;
+    const etaMin = parseClockToMinutesOfDay(etaStr);
+    if (etaMin === null) continue;
+    const diffMin = Math.round(cyclicForwardMinutes(nowIstMin, etaMin));
+    if (diffMin < -2 || diffMin > 90) continue;
+
+    arrivalsByReg.set(bus.registrationNumber, {
+      bus,
+      displayRouteCode: toDisplayRouteCode(bus.routeNumber) || bus.routeNumber,
+      routeNumber: bus.routeNumber,
+      fleet: bus.fleet,
+      registrationNumber: bus.registrationNumber,
+      destination: formatTitleCase(bus.destination || bus.routeName),
+      etaMinutes: Math.max(0, diffMin),
+      etaTime: etaStr,
+      source: 'trip-update'
+    });
+  }
+
+  // Pass 2: Active non-sleeping buses matched to a departure at this stop due within next 90 min
+  for (const dep of departures) {
+    const depMin = parseClockToMinutesOfDay(dep.departureTime);
+    if (depMin === null) continue;
+    const diffMin = Math.round(cyclicForwardMinutes(nowIstMin, depMin));
+    if (diffMin < -2 || diffMin > 90) continue;
+
+    for (const bus of dep.exactServiceLiveBuses) {
+      if (isBusSleeping(bus)) continue;
+      if (arrivalsByReg.has(bus.registrationNumber)) continue;
+
+      // Skip if the bus's reported next stop is already downstream of this stop
+      const nextNorm = normalizeStopNameKey(bus.nextStopName);
+      if (nextNorm) {
+        const nextIdx = dep.stops.findIndex((s) => normalizeStopNameKey(s.stopName) === nextNorm);
+        if (nextIdx > dep.stopIndex && dep.stopIndex >= 0) {
+          continue;
+        }
+      }
+
+      arrivalsByReg.set(bus.registrationNumber, {
+        bus,
+        displayRouteCode: dep.displayRouteCode,
+        routeNumber: dep.routeNumber,
+        fleet: bus.fleet === 'Standby' ? dep.fleet : bus.fleet,
+        registrationNumber: bus.registrationNumber,
+        destination: dep.destination,
+        etaMinutes: Math.max(0, diffMin),
+        etaTime: dep.departureTime,
+        source: 'schedule-route'
+      });
+    }
+  }
+
+  const liveArrivals = Array.from(arrivalsByReg.values()).sort(
+    (a, b) => a.etaMinutes - b.etaMinutes || a.displayRouteCode.localeCompare(b.displayRouteCode)
+  );
+
+  return {
+    routeCount: routesPassingHere.length,
+    liveArrivals,
+    routesPassingHere,
+    departures
+  };
 }
 
 export function getInitialDataset() {

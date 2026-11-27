@@ -142,3 +142,60 @@ export interface UserGpsLocation {
   accuracyMeters?: number;
 }
 
+export interface StopScheduleDeparture {
+  serviceKey: string;
+  routeNumber: string;
+  displayRouteCode: string;
+  fleet: FleetCategory;
+  cityName?: string;
+  origin: string;
+  destination: string;
+  departureTime: string;
+  originDepartureTime: string;
+  stopIndex: number;
+  stops: RouteStopTiming[];
+}
+
+export interface StopScheduleResponse {
+  stopId: string;
+  stopName: string;
+  resolvedStopIds: string[];
+  departures: StopScheduleDeparture[];
+}
+
+export interface StopLiveArrivalItem {
+  bus: LiveBus;
+  displayRouteCode: string;
+  routeNumber: string;
+  fleet: FleetCategory;
+  registrationNumber: string;
+  destination: string;
+  etaMinutes: number;
+  etaTime: string;
+  source: 'trip-update' | 'schedule-route';
+}
+
+export interface StopRouteBadgeItem {
+  displayRouteCode: string;
+  fleet: FleetCategory;
+  representativeRoute: BusRoute;
+  departuresCount: number;
+  liveBusCount: number;
+}
+
+export interface EnrichedStopDeparture extends StopScheduleDeparture {
+  id: string;
+  isLiveNow: boolean;
+  exactServiceLiveBuses: LiveBus[];
+  relatedRouteLiveBuses: LiveBus[];
+  routeObj: BusRoute;
+}
+
+export interface StopPanelData {
+  routeCount: number;
+  liveArrivals: StopLiveArrivalItem[];
+  routesPassingHere: StopRouteBadgeItem[];
+  departures: EnrichedStopDeparture[];
+}
+
+

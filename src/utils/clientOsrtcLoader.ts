@@ -2,9 +2,15 @@ import {
   calculateDistanceKm,
   classifyFleetCategory,
   formatTitleCase,
-  replaceCuttackWithKataka
+  replaceCuttackWithKataka,
+  toDisplayRouteCode
 } from './transitLogic';
-import { BusRoute, BusStop } from './transitTypes';
+import {
+  BusRoute,
+  BusStop,
+  StopScheduleDeparture,
+  StopScheduleResponse
+} from './transitTypes';
 import { CUSTOM_BUS_STOPS, mergeCustomBusStops } from './customStops';
 
 interface ClientRoadSegment {
@@ -625,6 +631,160 @@ export async function fetchRoutesOnRoadData(
     return {
       routes: mapRawRoutesToBusRoutes(rawRoutes),
       nearestStopName: nearestDist < 15 ? formatTitleCase(nearestStopName) : undefined
+    };
+  } catch {
+    return null;
+  }
+}
+
+function mapRawStopDepartures(rawDepartures: any[]): StopScheduleDeparture[] {
+  return rawDepartures
+    .map((d: any) => {
+      const routeNumber = String(d.routeNumber || '').trim();
+      const fleet = classifyFleetCategory(d.typeName, routeNumber, d.serviceKey);
+      const stops = Array.isArray(d.stops)
+        ? d.stops.map((s: any, idx: number) => ({
+            stopId: String(s.stopId || ''),
+            stopName: formatTitleCase(String(s.stopName || '')),
+            lat: Number(s.lat),
+            lon: Number(s.lon),
+            scheduledTime: String(s.scheduledTime || '--:--'),
+            status: (idx === 0 ? 'passed' : 'upcoming') as 'passed' | 'upcoming',
+            sequence: Number(s.sequence || idx + 1)
+          }))
+        : [];
+      if (stops.length < 2) return null;
+      return {
+        serviceKey: String(d.serviceKey || ''),
+        routeNumber,
+        displayRouteCode: toDisplayRouteCode(routeNumber) || routeNumber,
+        fleet,
+        cityName: d.cityName ? replaceCuttackWithKataka(String(d.cityName)) : undefined,
+        origin: formatTitleCase(String(d.origin || stops[0]?.stopName || '')),
+        destination: formatTitleCase(String(d.destination || stops[stops.length - 1]?.stopName || '')),
+        departureTime: String(d.departureTime || '--:--'),
+        originDepartureTime: String(d.originDepartureTime || d.departureTime || '--:--'),
+        stopIndex: Number.isFinite(Number(d.stopIndex)) ? Number(d.stopIndex) : 0,
+        stops
+      } as StopScheduleDeparture;
+    })
+    .filter((item): item is StopScheduleDeparture => Boolean(item));
+}
+
+export async function fetchStopScheduleData(stop: BusStop): Promise<StopScheduleResponse | null> {
+  const params = new URLSearchParams();
+  if (stop.name) params.set('name', stop.name);
+  if (stop.mirrorStopName) params.set('mirror', stop.mirrorStopName);
+
+  const apiData = await fetchJsonStrict(
+    `/api/osrtc/stop-schedule/${encodeURIComponent(stop.id)}?${params.toString()}`,
+    12_000
+  );
+  if (apiData && Array.isArray(apiData.departures)) {
+    return {
+      stopId: String(apiData.stopId || stop.id),
+      stopName: formatTitleCase(String(apiData.stopName || stop.name)),
+      resolvedStopIds: Array.isArray(apiData.resolvedStopIds) ? apiData.resolvedStopIds : [stop.id],
+      departures: mapRawStopDepartures(apiData.departures)
+    };
+  }
+
+  // Static Netlify fallback via full cached client network index (no route cap!)
+  try {
+    const net = await getClientNetworkIndex();
+    const targetStopIds = new Set<string>();
+    const mirrorName = stop.mirrorStopName || (stop.id === 'custom-mahuli' ? 'Kusumajodi' : '');
+
+    if (mirrorName) {
+      const needle = mirrorName.toLowerCase();
+      for (const [sid, tuple] of Object.entries(net.stops)) {
+        if (!Array.isArray(tuple) || !tuple[0]) continue;
+        if (String(tuple[0]).toLowerCase() === needle) targetStopIds.add(sid);
+      }
+      if (targetStopIds.size === 0) {
+        for (const [sid, tuple] of Object.entries(net.stops)) {
+          if (!Array.isArray(tuple) || !tuple[0]) continue;
+          if (String(tuple[0]).toLowerCase().includes(needle)) targetStopIds.add(sid);
+        }
+      }
+    } else if (net.stops[stop.id]) {
+      targetStopIds.add(stop.id);
+    } else if (stop.name) {
+      const needle = stop.name.toLowerCase();
+      for (const [sid, tuple] of Object.entries(net.stops)) {
+        if (!Array.isArray(tuple) || !tuple[0]) continue;
+        if (replaceCuttackWithKataka(String(tuple[0])).toLowerCase() === needle) {
+          targetStopIds.add(sid);
+        }
+      }
+    }
+
+    const outgoing: any[] = [];
+    const terminatingFallback: any[] = [];
+    const seenKeys = new Set<string>();
+
+    for (const [serviceKey, v] of Object.entries(net.services)) {
+      if (!Array.isArray(v) || !Array.isArray(v[6]) || v[6].length < 2) continue;
+      const stopIds: string[] = v[6];
+      const stopIdx = stopIds.findIndex((sid) => targetStopIds.has(String(sid)));
+      if (stopIdx < 0) continue;
+
+      const routeNumber = String(v[0] || '').trim();
+      const typeName = net.types[Number(v[1])] || 'OSRTC';
+      const isCity = serviceKey.startsWith('k');
+      const cityName = isCity ? replaceCuttackWithKataka(String(v[2] || '')) : '';
+      const originDep = String(v[3] || '');
+      const origin = replaceCuttackWithKataka(String(v[4] || ''));
+      const destination = replaceCuttackWithKataka(String(v[5] || ''));
+      const times: string[] = Array.isArray(v[7]) ? v[7] : [];
+      const departureTime = String(times[stopIdx] || (stopIdx === 0 ? originDep : '') || '--:--').trim();
+
+      const stopPoints = stopIds
+        .map((sid, idx) => {
+          const st = net.stops[sid];
+          if (!st) return null;
+          return {
+            stopId: sid,
+            stopName: replaceCuttackWithKataka(st[0]),
+            lat: st[1],
+            lon: st[2],
+            scheduledTime: String(times[idx] || '--:--'),
+            sequence: idx + 1
+          };
+        })
+        .filter(Boolean);
+
+      if (stopPoints.length < 2) continue;
+
+      const entry = {
+        serviceKey,
+        routeNumber,
+        typeName,
+        cityName,
+        origin,
+        destination,
+        departureTime,
+        originDepartureTime: originDep || departureTime,
+        stopIndex: stopIdx,
+        stops: stopPoints
+      };
+
+      const dedupeKey = `${routeNumber}|${destination}|${departureTime}`;
+      if (stopIdx < stopIds.length - 1) {
+        if (seenKeys.has(dedupeKey)) continue;
+        seenKeys.add(dedupeKey);
+        outgoing.push(entry);
+      } else {
+        terminatingFallback.push(entry);
+      }
+    }
+
+    const finalDepartures = outgoing.length > 0 ? outgoing : terminatingFallback;
+    return {
+      stopId: stop.id,
+      stopName: stop.name,
+      resolvedStopIds: Array.from(targetStopIds),
+      departures: mapRawStopDepartures(finalDepartures)
     };
   } catch {
     return null;
